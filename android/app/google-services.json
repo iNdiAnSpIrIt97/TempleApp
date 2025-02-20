@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "747273541838",
+    "project_id": "templeapp-1f368",
+    "storage_bucket": "templeapp-1f368.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:747273541838:android:c0e49bcdd506375c66189f",
+        "android_client_info": {
+          "package_name": "com.vktech.temple_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAtIKDB6o_yYabdISNyJAkTz9vvAR-6tTI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:747273541838:android:7c62e04f042c13b166189f",
+        "android_client_info": {
+          "package_name": "com.vktech.templeapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAtIKDB6o_yYabdISNyJAkTz9vvAR-6tTI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

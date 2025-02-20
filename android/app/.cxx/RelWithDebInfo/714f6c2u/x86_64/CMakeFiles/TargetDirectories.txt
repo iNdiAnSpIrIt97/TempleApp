@@ -1,0 +1,2 @@
+/Users/vimalkumar/Desktop/TempleApp/android/app/.cxx/RelWithDebInfo/714f6c2u/x86_64/CMakeFiles/edit_cache.dir
+/Users/vimalkumar/Desktop/TempleApp/android/app/.cxx/RelWithDebInfo/714f6c2u/x86_64/CMakeFiles/rebuild_cache.dir

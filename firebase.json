@@ -1,0 +1,41 @@
+{
+    "flutter": {
+        "platforms": {
+            "android": {
+                "default": {
+                    "projectId": "templeapp-1f368",
+                    "appId": "1:747273541838:android:c0e49bcdd506375c66189f",
+                    "fileOutput": "android/app/google-services.json"
+                }
+            },
+            "ios": {
+                "default": {
+                    "projectId": "templeapp-1f368",
+                    "appId": "1:747273541838:ios:ebda8a3fb1b96f9c66189f",
+                    "uploadDebugSymbols": false,
+                    "fileOutput": "ios/Runner/GoogleService-Info.plist"
+                }
+            },
+            "macos": {
+                "default": {
+                    "projectId": "templeapp-1f368",
+                    "appId": "1:747273541838:ios:ebda8a3fb1b96f9c66189f",
+                    "uploadDebugSymbols": false,
+                    "fileOutput": "macos/Runner/GoogleService-Info.plist"
+                }
+            },
+            "dart": {
+                "lib/firebase_options.dart": {
+                    "projectId": "templeapp-1f368",
+                    "configurations": {
+                        "android": "1:747273541838:android:c0e49bcdd506375c66189f",
+                        "ios": "1:747273541838:ios:ebda8a3fb1b96f9c66189f",
+                        "macos": "1:747273541838:ios:ebda8a3fb1b96f9c66189f",
+                        "web": "1:747273541838:web:dd71e71b6e72c79866189f",
+                        "windows": "1:747273541838:web:807c9f28571a595666189f"
+                    }
+                }
+            }
+        }
+    }
+}
