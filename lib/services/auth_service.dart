@@ -18,17 +18,76 @@ class AuthService {
 
       User? user = userCredential.user;
       if (user != null) {
+        // Check if the user's email is verified
+        if (!user.emailVerified) {
+          // Show a popup to inform the user to verify their email
+          _showVerificationPopup(user, context);
+          return; // Prevent further actions if the user is not verified
+        }
+
+        // If the user is verified, check their role and navigate accordingly
         await _checkUserRole(user.uid, context);
       }
+    } on FirebaseAuthException catch (e) {
+      throw e; // ✅ Now it throws the actual FirebaseAuthException
     } catch (e) {
-      throw e.toString();
+      throw Exception("An unexpected error occurred. Please try again.");
+    }
+  }
+
+  /// Show a popup to inform the user to verify their email
+  void _showVerificationPopup(User user, BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Account Not Verified"),
+        content: const Text(
+            "Your account is not verified. Please verify your email to continue."),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Close"),
+          ),
+          TextButton(
+            onPressed: () => _resendVerificationEmail(user, context),
+            child: const Text("Resend Verification Email"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Resend verification email
+  Future<void> _resendVerificationEmail(User user, BuildContext context) async {
+    try {
+      await user.sendEmailVerification();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Verification email sent!"),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Failed to resend verification email: $e"),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 
   Future<void> _checkUserRole(String uid, BuildContext context) async {
-    DocumentSnapshot userDoc =
-        await _firestore.collection('users').doc(uid).get();
-    if (userDoc.exists) {
+    try {
+      DocumentSnapshot userDoc =
+          await _firestore.collection('users').doc(uid).get();
+      if (!userDoc.exists) {
+        throw FirebaseAuthException(
+          code: "role-not-found",
+          message: "User role not found. Please contact support.",
+        );
+      }
+
       String role = userDoc['role'];
       if (role == 'admin') {
         Navigator.pushReplacement(
@@ -37,6 +96,11 @@ class AuthService {
         Navigator.pushReplacement(
             context, MaterialPageRoute(builder: (_) => UserDashboard()));
       }
+    } catch (e) {
+      throw FirebaseAuthException(
+        code: "role-fetch-error",
+        message: "Failed to retrieve user role. Please try again.",
+      );
     }
   }
 }

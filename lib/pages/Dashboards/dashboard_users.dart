@@ -1,7 +1,11 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:temple_app/pages/login/login_page.dart';
+import 'package:carousel_slider/carousel_slider.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:shimmer/shimmer.dart';
+import 'package:temple_app/pages/User/bookings_page.dart';
+import 'package:temple_app/pages/User/donations_page.dart';
+import 'package:temple_app/pages/User/store_page.dart';
 
 class UserDashboard extends StatefulWidget {
   const UserDashboard({super.key});
@@ -12,23 +16,12 @@ class UserDashboard extends StatefulWidget {
 
 class _UserDashboardState extends State<UserDashboard> {
   int _selectedIndex = 0;
-  String _bannerUrl = "";
-
-  @override
-  void initState() {
-    super.initState();
-    _fetchBannerUrl();
-  }
-
-  Future<void> _fetchBannerUrl() async {
-    DocumentSnapshot snapshot =
-        await FirebaseFirestore.instance.collection('banner').doc('image').get();
-    if (snapshot.exists) {
-      setState(() {
-        _bannerUrl = snapshot['url'];
-      });
-    }
-  }
+  final List<Widget> _pages = [
+    const UserDashboardContent(),
+    const BookingPage(),
+    const SettingsPage(),
+    const Scaffold(body: Center(child: Text("Cart Page"))),
+  ];
 
   void _onItemTapped(int index) {
     setState(() {
@@ -36,119 +29,16 @@ class _UserDashboardState extends State<UserDashboard> {
     });
   }
 
-  Future<void> _logout() async {
-    bool? confirmLogout = await showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text("Logout"),
-        content: Text("Are you sure you want to logout?"),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: Text("Cancel"),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: Text("Logout", style: TextStyle(color: Colors.red)),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmLogout == true) {
-      await FirebaseAuth.instance.signOut();
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => LoginPage()),
-      );
-    }
-  }
-
-  Widget _buildBanner() {
-    return Stack(
-      children: [
-        ClipPath(
-          clipper: BannerClipper(),
-          child: Container(
-            height: MediaQuery.of(context).size.height * 0.4,
-            decoration: BoxDecoration(
-              image: _bannerUrl.isNotEmpty
-                  ? DecorationImage(
-                      image: NetworkImage(_bannerUrl),
-                      fit: BoxFit.cover,
-                    )
-                  : null,
-              color: Colors.grey[300],
-            ),
-          ),
-        ),
-        Positioned(
-          top: 20,
-          right: 20,
-          child: Icon(Icons.notifications, size: 30, color: Colors.white),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildMenuGrid() {
-    List<Map<String, dynamic>> menuItems = [
-      {'icon': Icons.favorite, 'label': 'Donations'},
-      {'icon': Icons.local_fire_department, 'label': 'Vazhipaadu'},
-      {'icon': Icons.event, 'label': 'Events'},
-      {'icon': Icons.store, 'label': 'Store'},
-      {'icon': Icons.calendar_today, 'label': 'Special Days'},
-      {'icon': Icons.book_online, 'label': 'Bookings'},
-    ];
-
-    return GridView.builder(
-      padding: EdgeInsets.all(16),
-      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
-        crossAxisSpacing: 16,
-        mainAxisSpacing: 16,
-      ),
-      itemCount: menuItems.length,
-      itemBuilder: (context, index) {
-        return Column(
-          children: [
-            Container(
-              padding: EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: Colors.red.shade100,
-              ),
-              child:
-                  Icon(menuItems[index]['icon'], size: 32, color: Colors.red),
-            ),
-            SizedBox(height: 8),
-            Text(menuItems[index]['label']),
-          ],
-        );
-      },
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text("User Dashboard"),
-        actions: [
-          IconButton(icon: Icon(Icons.logout), onPressed: _logout),
-        ],
-      ),
-      body: Column(
-        children: [
-          _buildBanner(),
-          Expanded(child: _buildMenuGrid()),
-        ],
-      ),
+      body: _pages[_selectedIndex],
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _selectedIndex,
         onTap: _onItemTapped,
-        selectedItemColor: Colors.red,
+        selectedItemColor: Colors.orangeAccent,
         unselectedItemColor: Colors.grey,
+        showUnselectedLabels: true,
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: "Home"),
           BottomNavigationBarItem(icon: Icon(Icons.book), label: "Bookings"),
@@ -162,18 +52,239 @@ class _UserDashboardState extends State<UserDashboard> {
   }
 }
 
-class BannerClipper extends CustomClipper<Path> {
+class UserDashboardContent extends StatefulWidget {
+  const UserDashboardContent({super.key});
+
   @override
-  Path getClip(Size size) {
-    Path path = Path();
-    path.lineTo(0, size.height - 50);
-    path.quadraticBezierTo(
-        size.width / 2, size.height, size.width, size.height - 50);
-    path.lineTo(size.width, 0);
-    path.close();
-    return path;
+  State<UserDashboardContent> createState() => _UserDashboardContentState();
+}
+
+class _UserDashboardContentState extends State<UserDashboardContent> {
+  int _currentBannerIndex = 0;
+  List<String> _bannerUrls = [];
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(() => _fetchBannerUrls());
+  }
+
+  Future<void> _fetchBannerUrls() async {
+    try {
+      var snapshot =
+          await FirebaseFirestore.instance.collection('banner').get();
+
+      if (!mounted) return; // Prevent setState on unmounted widget
+
+      List<String> urls = snapshot.docs
+          .map((doc) => doc['url'] as String? ?? '')
+          .where((url) => url.isNotEmpty)
+          .toList();
+
+      setState(() {
+        _bannerUrls = urls;
+        _isLoading = false;
+      });
+    } catch (e) {
+      print("Error fetching banner URLs: $e");
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  Widget _buildBanner() {
+    double bannerHeight = MediaQuery.of(context).size.height * 0.55;
+
+    return Stack(
+      children: [
+        // Banner Carousel
+        _isLoading
+            ? Container(
+                height: bannerHeight,
+                width: double.infinity,
+                child: Shimmer.fromColors(
+                  baseColor: Colors.grey[300]!,
+                  highlightColor: Colors.grey[100]!,
+                  child: Container(
+                    color: Colors.grey[300],
+                  ),
+                ),
+              )
+            : _bannerUrls.isNotEmpty
+                ? CarouselSlider(
+                    options: CarouselOptions(
+                      height: bannerHeight,
+                      autoPlay: true,
+                      enlargeCenterPage: true,
+                      viewportFraction: 1.0,
+                      onPageChanged: (index, reason) {
+                        if (mounted) {
+                          setState(() {
+                            _currentBannerIndex = index;
+                          });
+                        }
+                      },
+                    ),
+                    items: _bannerUrls.map((url) {
+                      return Container(
+                        height: bannerHeight,
+                        width: double.infinity,
+                        decoration: BoxDecoration(
+                          image: DecorationImage(
+                            image: NetworkImage(url),
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.bottomCenter,
+                              end: Alignment.topCenter,
+                              colors: [
+                                Colors.black.withOpacity(0.7),
+                                Colors.transparent,
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  )
+                : Container(
+                    height: bannerHeight,
+                    color: Colors.black12,
+                    child: const Center(
+                      child: Text(
+                        "No Banners Available",
+                        style: TextStyle(color: Colors.grey),
+                      ),
+                    ),
+                  ),
+
+        // Notification Icon
+        Positioned(
+          top: 20,
+          right: 20,
+          child: IconButton(
+            icon:
+                const Icon(Icons.notifications, color: Colors.white, size: 40),
+            onPressed: () {
+              // Handle notification click
+            },
+          ),
+        ),
+
+        // Dots Indicator
+        if (_bannerUrls.isNotEmpty)
+          Positioned(
+            bottom: 10,
+            left: 0,
+            right: 0,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List.generate(_bannerUrls.length, (index) {
+                return Container(
+                  width: _currentBannerIndex == index ? 12.0 : 8.0,
+                  height: _currentBannerIndex == index ? 12.0 : 8.0,
+                  margin: const EdgeInsets.symmetric(horizontal: 4.0),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: _currentBannerIndex == index
+                        ? Colors.orangeAccent
+                        : Colors.black,
+                  ),
+                );
+              }),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildMenuGrid() {
+    List<Map<String, dynamic>> menuItems = [
+      {
+        'icon': Icons.money,
+        'label': 'Donations',
+        'onTap': () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const DonationPage()),
+          );
+        },
+      },
+      {
+        'icon': Icons.book_online,
+        'label': 'Bookings',
+        'onTap': () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const BookingPage()),
+          );
+        },
+      },
+      {'icon': Icons.festival, 'label': 'Events'},
+      {'icon': Icons.store, 'label': 'Store'},
+      {'icon': Icons.calendar_today, 'label': 'Special Days'},
+    ];
+
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      padding: const EdgeInsets.all(16),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        crossAxisSpacing: 20,
+        mainAxisSpacing: 30,
+      ),
+      itemCount: menuItems.length,
+      itemBuilder: (context, index) {
+        return GestureDetector(
+          onTap: menuItems[index]['onTap'],
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(100),
+              gradient: const LinearGradient(
+                colors: [Color(0xFFD55959), Color(0xFFAC530A)],
+              ),
+              boxShadow: const [
+                BoxShadow(
+                    color: Colors.black26, blurRadius: 5, offset: Offset(3, 3)),
+              ],
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(menuItems[index]['icon'], size: 20, color: Colors.white),
+                const SizedBox(height: 8),
+                Text(
+                  menuItems[index]['label'],
+                  style: GoogleFonts.poppins(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w500,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   @override
-  bool shouldReclip(CustomClipper<Path> oldClipper) => false;
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      child: Column(
+        children: [
+          _buildBanner(),
+          const SizedBox(height: 20),
+          _buildMenuGrid(),
+        ],
+      ),
+    );
+  }
 }
