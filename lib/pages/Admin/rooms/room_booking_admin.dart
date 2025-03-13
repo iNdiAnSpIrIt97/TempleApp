@@ -159,7 +159,7 @@ class RoomOverviewTab extends StatelessWidget {
     if (confirmDelete == true) {
       try {
         await FirebaseFirestore.instance
-            .collection('rooms')
+            .collection('room')
             .doc(roomId)
             .delete();
         ScaffoldMessenger.of(context).showSnackBar(

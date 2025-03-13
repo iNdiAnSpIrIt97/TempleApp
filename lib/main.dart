@@ -1,35 +1,57 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:provider/provider.dart';
+import 'package:temple_app/provider/theme_provider.dart';
+import 'firebase_options.dart';
+import 'package:temple_app/constants.dart';
 import 'package:temple_app/pages/Dashboards/dashboard_admin.dart';
 import 'package:temple_app/pages/Dashboards/dashboard_users.dart';
 import 'package:temple_app/pages/Login/login_landing.dart';
 import 'package:temple_app/pages/Login/login_page.dart';
 import 'package:temple_app/pages/User/bookings_page.dart';
-import 'firebase_options.dart';
-import 'package:temple_app/constants.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  SharedPreferences prefs = await SharedPreferences.getInstance();
+  bool isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
+  String? userRole = prefs.getString('role');
 
   try {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
+    runApp(
+      ChangeNotifierProvider(
+        create: (context) => ThemeProvider(),
+        child: MyApp(isLoggedIn: isLoggedIn, userRole: userRole),
+      ),
+    );
   } catch (e) {
     debugPrint("🔥 Firebase Initialization Error: $e");
+    runApp(const ErrorApp());
   }
-
-  runApp(const MyApp());
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  final bool isLoggedIn;
+  final String? userRole;
+
+  const MyApp({super.key, required this.isLoggedIn, this.userRole});
 
   @override
   Widget build(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
+
+    String initialRoute = '/';
+    if (isLoggedIn) {
+      initialRoute =
+          userRole == 'admin' ? '/dashboard_admin' : '/dashboard_user';
+    }
+
     return MaterialApp(
-      title: 'Temple App',
-      themeMode: ThemeMode.system,
+      title: 'Manapullikavu Temple App',
+      themeMode: themeProvider.isDarkMode ? ThemeMode.dark : ThemeMode.light,
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         brightness: Brightness.light,
@@ -40,11 +62,6 @@ class MyApp extends StatelessWidget {
         bottomNavigationBarTheme: BottomNavigationBarThemeData(
           selectedItemColor: AppColors.lightOther,
           unselectedItemColor: Colors.grey,
-        ),
-        inputDecorationTheme: InputDecorationTheme(
-          labelStyle: TextStyle(color: Colors.black),
-          hintStyle: TextStyle(color: Colors.black54),
-          prefixIconColor: Colors.black,
         ),
       ),
       darkTheme: ThemeData(
@@ -57,20 +74,33 @@ class MyApp extends StatelessWidget {
           selectedItemColor: AppColors.darkOther,
           unselectedItemColor: Colors.grey,
         ),
-        inputDecorationTheme: InputDecorationTheme(
-          labelStyle: TextStyle(color: Colors.black),
-          hintStyle: TextStyle(color: Colors.black54),
-          prefixIconColor: Colors.black,
-        ),
       ),
-      initialRoute: '/', // Default route
+      initialRoute: initialRoute,
       routes: {
         '/': (context) => LoginLanding(),
         '/login': (context) => LoginPage(),
         '/dashboard_admin': (context) => AdminDashboard(),
-        '/dashboard_user': (context) => UserDashboard(),
+        '/dashboard_user': (context) => UserDashboardContent(),
         '/bookings_user': (context) => BookingPage(),
       },
+    );
+  }
+}
+
+class ErrorApp extends StatelessWidget {
+  const ErrorApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      home: Scaffold(
+        body: Center(
+          child: Text(
+            "Failed to initialize Firebase. Please restart the app.",
+            style: TextStyle(color: Colors.red, fontSize: 18),
+          ),
+        ),
+      ),
     );
   }
 }

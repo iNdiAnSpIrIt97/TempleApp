@@ -1,10 +1,33 @@
 import 'package:flutter/material.dart';
 import 'package:temple_app/pages/Dashboards/dashboard_users.dart';
 import 'dart:ui';
-
+import 'package:shared_preferences/shared_preferences.dart'; // Add this import
 import 'package:temple_app/pages/Login/login_page.dart';
 
 class LoginLanding extends StatelessWidget {
+  // Add this method to handle guest login
+  Future<void> _handleGuestLogin(BuildContext context) async {
+    try {
+      // Get instance of SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+
+      // Clear existing preferences
+      await prefs.clear();
+
+      // Set role as guest
+      await prefs.setString('role', 'guest');
+
+      // Navigate to UserDashboardContent
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => UserDashboardContent()),
+      );
+    } catch (e) {
+      // Handle any errors that might occur
+      print('Error in guest login: $e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -68,12 +91,8 @@ class LoginLanding extends StatelessWidget {
                   ),
                   SizedBox(height: 25),
                   TextButton(
-                    onPressed: () {
-                      Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (context) => UserDashboard()));
-                    },
+                    onPressed: () =>
+                        _handleGuestLogin(context), // Update this line
                     child: Text(
                       'Continue as Guest',
                       style: TextStyle(

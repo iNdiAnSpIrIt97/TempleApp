@@ -12,57 +12,25 @@ class _PoojaManagementPageState extends State<PoojaManagementPage> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final TextEditingController _titleController = TextEditingController();
   final TextEditingController _amountController = TextEditingController();
-  List<DateTime> _selectedDates = [];
-  List<DateTime> _blockedDates = [];
-
-  @override
-  void initState() {
-    super.initState();
-    _fetchBlockedDates();
-  }
-
-  Future<void> _fetchBlockedDates() async {
-    try {
-      final snapshot = await _firestore.collection('poojas').get();
-      final blockedDates = <DateTime>[];
-      for (final doc in snapshot.docs) {
-        final dates = doc['booked_dates'] as List<dynamic>;
-        for (final date in dates) {
-          blockedDates.add(DateTime.parse(date));
-        }
-      }
-      setState(() {
-        _blockedDates = blockedDates;
-      });
-      print("Fetched Blocked Dates: $_blockedDates"); // Debugging
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Error fetching blocked dates: $e")),
-      );
-    }
-  }
 
   Future<void> _selectDate(
       BuildContext context, List<DateTime> bookedDates, String poojaId) async {
     try {
-      // Ensure the initial date is not blocked
       DateTime initialDate = DateTime.now();
-      while (_blockedDates.any((blockedDate) =>
+      while (bookedDates.any((blockedDate) =>
           blockedDate.year == initialDate.year &&
           blockedDate.month == initialDate.month &&
           blockedDate.day == initialDate.day)) {
-        initialDate =
-            initialDate.add(const Duration(days: 1)); // Move to the next day
+        initialDate = initialDate.add(const Duration(days: 1));
       }
 
       final DateTime? picked = await showDatePicker(
         context: context,
-        initialDate: initialDate, // Use the validated initial date
+        initialDate: initialDate,
         firstDate: DateTime.now(),
         lastDate: DateTime(2100),
         selectableDayPredicate: (DateTime date) {
-          // Ensure the date is not in the blocked list
-          return !_blockedDates.any((blockedDate) =>
+          return !bookedDates.any((blockedDate) =>
               blockedDate.year == date.year &&
               blockedDate.month == date.month &&
               blockedDate.day == date.day);
@@ -70,26 +38,20 @@ class _PoojaManagementPageState extends State<PoojaManagementPage> {
       );
 
       if (picked != null && !bookedDates.contains(picked)) {
-        // Add the selected date to Firestore
         await _firestore.collection('poojas').doc(poojaId).update({
           'booked_dates': FieldValue.arrayUnion([picked.toIso8601String()]),
         });
 
-        // Refresh the blocked dates list
-        _fetchBlockedDates();
-
-        // Update the local state
         setState(() {
           bookedDates.add(picked);
         });
 
-        // Show a success message
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("Date added successfully!")),
         );
       }
     } catch (e) {
-      print("Error in _selectDate: $e"); // Debugging
+      print("Error in _selectDate: $e");
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("Error selecting date: $e")),
       );
@@ -99,7 +61,7 @@ class _PoojaManagementPageState extends State<PoojaManagementPage> {
   Future<void> _addPooja() async {
     final title = _titleController.text.trim();
     final amount = _amountController.text.trim();
-    if (title.isEmpty || amount.isEmpty || _selectedDates.isEmpty) {
+    if (title.isEmpty || amount.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("All fields are required!")),
       );
@@ -109,13 +71,10 @@ class _PoojaManagementPageState extends State<PoojaManagementPage> {
       await _firestore.collection('poojas').add({
         'title': title,
         'amount': amount,
-        'booked_dates':
-            _selectedDates.map((date) => date.toIso8601String()).toList(),
+        'booked_dates': [], // Initialize with empty array
       });
       _titleController.clear();
       _amountController.clear();
-      setState(() => _selectedDates.clear());
-      _fetchBlockedDates(); // Refresh blocked dates
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Pooja added successfully!")),
       );
@@ -143,7 +102,6 @@ class _PoojaManagementPageState extends State<PoojaManagementPage> {
   }
 
   Future<void> _deletePooja(String poojaId) async {
-    // Show confirmation dialog
     bool confirmDelete = await showDialog(
       context: context,
       builder: (context) {
@@ -167,7 +125,6 @@ class _PoojaManagementPageState extends State<PoojaManagementPage> {
     if (confirmDelete == true) {
       try {
         await _firestore.collection('poojas').doc(poojaId).delete();
-        _fetchBlockedDates(); // Refresh blocked dates
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("Pooja deleted successfully!")),
         );
@@ -180,7 +137,6 @@ class _PoojaManagementPageState extends State<PoojaManagementPage> {
   }
 
   Future<void> _deleteBooking(String bookingId) async {
-    // Show confirmation dialog
     bool confirmDelete = await showDialog(
       context: context,
       builder: (context) {
@@ -263,61 +219,21 @@ class _PoojaManagementPageState extends State<PoojaManagementPage> {
                 decoration: const InputDecoration(labelText: "Amount"),
                 keyboardType: TextInputType.number,
               ),
-              const SizedBox(height: 10),
-              Wrap(
-                children: _selectedDates.map((date) {
-                  return Chip(label: Text(date.toIso8601String()));
-                }).toList(),
-              ),
-              const SizedBox(height: 10),
-              ElevatedButton(
-                onPressed: () async {
-                  // Save the Pooja first to get the document ID
-                  final title = _titleController.text.trim();
-                  final amount = _amountController.text.trim();
-                  if (title.isEmpty || amount.isEmpty) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                          content: Text("Title and Amount are required!")),
-                    );
-                    return;
-                  }
-
-                  try {
-                    // Add the Pooja to Firestore
-                    final docRef = await _firestore.collection('poojas').add({
-                      'title': title,
-                      'amount': amount,
-                      'booked_dates': _selectedDates
-                          .map((date) => date.toIso8601String())
-                          .toList(),
-                    });
-
-                    // Get the document ID
-                    final poojaId = docRef.id;
-
-                    // Now allow the user to select dates
-                    await _selectDate(context, _selectedDates, poojaId);
-
-                    // Refresh the UI
-                    setState(() {});
-                  } catch (e) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text("Error adding Pooja: $e")),
-                    );
-                  }
-                },
-                child: const Text("Select Date"),
-              ),
-              ElevatedButton(
-                onPressed: () {
-                  _addPooja();
-                  Navigator.pop(context);
-                },
-                child: const Text("Add Pooja"),
-              ),
             ],
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Cancel"),
+            ),
+            TextButton(
+              onPressed: () {
+                _addPooja();
+                Navigator.pop(context);
+              },
+              child: const Text("Add"),
+            ),
+          ],
         );
       },
     );
@@ -375,8 +291,8 @@ class _PoojaManagementPageState extends State<PoojaManagementPage> {
       child: Scaffold(
         appBar: AppBar(
           title: const Text("Pooja Management"),
-          bottom: TabBar(
-            tabs: const [
+          bottom: const TabBar(
+            tabs: [
               Tab(text: "View Bookings"),
               Tab(text: "Update Poojas"),
             ],
@@ -438,8 +354,8 @@ class _PoojaManagementPageState extends State<PoojaManagementPage> {
         }
         return ListView(
           children: snapshot.data!.docs.map((doc) {
-            final poojaId = doc.id; // Get the document ID
-            final bookedDates = (doc['booked_dates'] as List<dynamic>)
+            final poojaId = doc.id;
+            final bookedDates = (doc['booked_dates'] as List<dynamic>? ?? [])
                 .map((date) => DateTime.parse(date))
                 .toList();
 

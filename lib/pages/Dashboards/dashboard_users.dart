@@ -1,56 +1,24 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:carousel_slider/carousel_slider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shimmer/shimmer.dart';
+import 'package:temple_app/pages/Admin/update_offerings.dart';
+import 'package:temple_app/pages/Login/login_landing.dart';
 import 'package:temple_app/pages/User/bookings_page.dart';
 import 'package:temple_app/pages/User/donations_page.dart';
+import 'package:temple_app/pages/User/events_page.dart';
+import 'package:temple_app/pages/User/my_booking_page.dart';
+import 'package:temple_app/pages/User/offerings_page.dart';
+import 'package:temple_app/pages/User/pooja_booking_page.dart';
+import 'package:temple_app/pages/User/pooja_list_page.dart';
+import 'package:temple_app/pages/User/profile_page.dart';
+import 'package:temple_app/pages/User/store_home_page.dart';
 import 'package:temple_app/pages/User/store_page.dart';
-
-class UserDashboard extends StatefulWidget {
-  const UserDashboard({super.key});
-
-  @override
-  State<UserDashboard> createState() => _UserDashboardState();
-}
-
-class _UserDashboardState extends State<UserDashboard> {
-  int _selectedIndex = 0;
-  final List<Widget> _pages = [
-    const UserDashboardContent(),
-    const BookingPage(),
-    const SettingsPage(),
-    const Scaffold(body: Center(child: Text("Cart Page"))),
-  ];
-
-  void _onItemTapped(int index) {
-    setState(() {
-      _selectedIndex = index;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: _pages[_selectedIndex],
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _selectedIndex,
-        onTap: _onItemTapped,
-        selectedItemColor: Colors.orangeAccent,
-        unselectedItemColor: Colors.grey,
-        showUnselectedLabels: true,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: "Home"),
-          BottomNavigationBarItem(icon: Icon(Icons.book), label: "Bookings"),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.settings), label: "Settings"),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.shopping_cart), label: "Cart"),
-        ],
-      ),
-    );
-  }
-}
+import 'package:temple_app/pages/admin/store_management.dart';
+import 'package:temple_app/constants.dart';
 
 class UserDashboardContent extends StatefulWidget {
   const UserDashboardContent({super.key});
@@ -67,223 +35,489 @@ class _UserDashboardContentState extends State<UserDashboardContent> {
   @override
   void initState() {
     super.initState();
-    Future.microtask(() => _fetchBannerUrls());
+    _fetchBannerUrls();
   }
 
   Future<void> _fetchBannerUrls() async {
     try {
       var snapshot =
           await FirebaseFirestore.instance.collection('banner').get();
-
-      if (!mounted) return; // Prevent setState on unmounted widget
-
+      if (!mounted) return;
       List<String> urls = snapshot.docs
           .map((doc) => doc['url'] as String? ?? '')
           .where((url) => url.isNotEmpty)
           .toList();
-
       setState(() {
         _bannerUrls = urls;
         _isLoading = false;
       });
     } catch (e) {
       print("Error fetching banner URLs: $e");
-      setState(() {
-        _isLoading = false;
-      });
+      setState(() => _isLoading = false);
     }
   }
 
   Widget _buildBanner() {
-    double bannerHeight = MediaQuery.of(context).size.height * 0.55;
+    double bannerHeight = MediaQuery.of(context).size.height * 0.35;
+    bool isDarkMode = Theme.of(context).brightness == Brightness.dark;
 
-    return Stack(
-      children: [
-        // Banner Carousel
-        _isLoading
-            ? Container(
-                height: bannerHeight,
-                width: double.infinity,
-                child: Shimmer.fromColors(
+    return Container(
+      height: bannerHeight,
+      decoration: BoxDecoration(
+        color: isDarkMode
+            ? AppColors.darkCardBackground
+            : AppColors.lightCardBackground,
+      ),
+      child: Stack(
+        children: [
+          _isLoading
+              ? Shimmer.fromColors(
                   baseColor: Colors.grey[300]!,
                   highlightColor: Colors.grey[100]!,
                   child: Container(
+                    height: bannerHeight,
                     color: Colors.grey[300],
                   ),
-                ),
-              )
-            : _bannerUrls.isNotEmpty
-                ? CarouselSlider(
-                    options: CarouselOptions(
-                      height: bannerHeight,
-                      autoPlay: true,
-                      enlargeCenterPage: true,
-                      viewportFraction: 1.0,
-                      onPageChanged: (index, reason) {
-                        if (mounted) {
-                          setState(() {
-                            _currentBannerIndex = index;
-                          });
-                        }
-                      },
-                    ),
-                    items: _bannerUrls.map((url) {
-                      return Container(
+                )
+              : _bannerUrls.isNotEmpty
+                  ? CarouselSlider(
+                      options: CarouselOptions(
                         height: bannerHeight,
-                        width: double.infinity,
-                        decoration: BoxDecoration(
-                          image: DecorationImage(
-                            image: NetworkImage(url),
-                            fit: BoxFit.cover,
+                        autoPlay: true,
+                        autoPlayInterval: const Duration(seconds: 4),
+                        enlargeCenterPage: true,
+                        viewportFraction: 1.0,
+                        onPageChanged: (index, reason) {
+                          if (mounted)
+                            setState(() => _currentBannerIndex = index);
+                        },
+                      ),
+                      items: _bannerUrls.map((url) {
+                        return ClipRRect(
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              Image.network(
+                                url,
+                                fit: BoxFit.cover,
+                                loadingBuilder:
+                                    (context, child, loadingProgress) {
+                                  if (loadingProgress == null) return child;
+                                  return Center(
+                                    child: CircularProgressIndicator(
+                                      value:
+                                          loadingProgress.expectedTotalBytes !=
+                                                  null
+                                              ? loadingProgress
+                                                      .cumulativeBytesLoaded /
+                                                  (loadingProgress
+                                                          .expectedTotalBytes ??
+                                                      1)
+                                              : null,
+                                    ),
+                                  );
+                                },
+                              ),
+                              Container(
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    begin: Alignment.topCenter,
+                                    end: Alignment.bottomCenter,
+                                    colors: [
+                                      Colors.black.withOpacity(0.2),
+                                      Colors.black.withOpacity(0.6),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
-                        ),
-                        child: Container(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.bottomCenter,
-                              end: Alignment.topCenter,
-                              colors: [
-                                Colors.black.withOpacity(0.7),
-                                Colors.transparent,
-                              ],
+                        );
+                      }).toList(),
+                    )
+                  : Container(
+                      height: bannerHeight,
+                      color: isDarkMode
+                          ? AppColors.darkCardBackground
+                          : AppColors.lightCardBackground,
+                      child: Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.image_not_supported,
+                                size: 40, color: Colors.grey[600]),
+                            const SizedBox(height: 10),
+                            Text(
+                              "No Banners Available",
+                              style: GoogleFonts.poppins(
+                                color: Colors.grey[600],
+                                decoration: TextDecoration.none,
+                              ),
                             ),
-                          ),
+                            GestureDetector(
+                              onTap: () => _fetchBannerUrls(),
+                              child: Padding(
+                                padding: const EdgeInsets.all(8.0),
+                                child: Text(
+                                  "Retry",
+                                  style: GoogleFonts.poppins(
+                                    color: isDarkMode
+                                        ? AppColors.darkAccent
+                                        : AppColors.lightAccent,
+                                    decoration: TextDecoration.none,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                      );
-                    }).toList(),
-                  )
-                : Container(
-                    height: bannerHeight,
-                    color: Colors.black12,
-                    child: const Center(
-                      child: Text(
-                        "No Banners Available",
-                        style: TextStyle(color: Colors.grey),
                       ),
                     ),
-                  ),
-
-        // Notification Icon
-        Positioned(
-          top: 20,
-          right: 20,
-          child: IconButton(
-            icon:
-                const Icon(Icons.notifications, color: Colors.white, size: 40),
-            onPressed: () {
-              // Handle notification click
-            },
-          ),
-        ),
-
-        // Dots Indicator
-        if (_bannerUrls.isNotEmpty)
           Positioned(
-            bottom: 10,
-            left: 0,
-            right: 0,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: List.generate(_bannerUrls.length, (index) {
-                return Container(
-                  width: _currentBannerIndex == index ? 12.0 : 8.0,
-                  height: _currentBannerIndex == index ? 12.0 : 8.0,
-                  margin: const EdgeInsets.symmetric(horizontal: 4.0),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: _currentBannerIndex == index
-                        ? Colors.orangeAccent
-                        : Colors.black,
-                  ),
-                );
-              }),
+            top: 40,
+            right: 20,
+            child: Container(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.black.withOpacity(0.4),
+              ),
+              child: IconButton(
+                icon: Icon(
+                  Icons.notifications,
+                  color:
+                      isDarkMode ? AppColors.darkIcons : AppColors.lightIcons,
+                  size: 28,
+                ),
+                onPressed: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text("Notifications coming soon")),
+                  );
+                },
+              ),
             ),
           ),
-      ],
+          if (_bannerUrls.isNotEmpty)
+            Positioned(
+              bottom: 15,
+              left: 0,
+              right: 0,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(_bannerUrls.length, (index) {
+                  return Container(
+                    width: _currentBannerIndex == index ? 10 : 8,
+                    height: _currentBannerIndex == index ? 10 : 8,
+                    margin: const EdgeInsets.symmetric(horizontal: 3),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: _currentBannerIndex == index
+                          ? (isDarkMode
+                              ? AppColors.darkAccent
+                              : AppColors.lightAccent)
+                          : Colors.white.withOpacity(0.5),
+                    ),
+                  );
+                }),
+              ),
+            ),
+        ],
+      ),
     );
   }
 
-  Widget _buildMenuGrid() {
-    List<Map<String, dynamic>> menuItems = [
-      {
-        'icon': Icons.money,
-        'label': 'Donations',
-        'onTap': () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const DonationPage()),
-          );
-        },
-      },
-      {
-        'icon': Icons.book_online,
-        'label': 'Bookings',
-        'onTap': () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const BookingPage()),
-          );
-        },
-      },
-      {'icon': Icons.festival, 'label': 'Events'},
-      {'icon': Icons.store, 'label': 'Store'},
-      {'icon': Icons.calendar_today, 'label': 'Special Days'},
-    ];
+  Widget _buildUserHeader() {
+    bool isDarkMode = Theme.of(context).brightness == Brightness.dark;
 
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
+    return Container(
       padding: const EdgeInsets.all(16),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
-        crossAxisSpacing: 20,
-        mainAxisSpacing: 30,
+      // margin: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: isDarkMode
+            ? AppColors.darkCardBackground
+            : AppColors.lightCardBackground,
+        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(20)),
+        boxShadow: [
+          BoxShadow(
+            color: isDarkMode ? AppColors.darkShadow : AppColors.lightShadow,
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
-      itemCount: menuItems.length,
-      itemBuilder: (context, index) {
-        return GestureDetector(
-          onTap: menuItems[index]['onTap'],
-          child: Container(
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(2),
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(100),
-              gradient: const LinearGradient(
-                colors: [Color(0xFFD55959), Color(0xFFAC530A)],
+              shape: BoxShape.circle,
+              gradient: LinearGradient(
+                colors: [
+                  isDarkMode ? AppColors.darkAccent : AppColors.lightAccent,
+                  Colors.deepOrange
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
               ),
-              boxShadow: const [
-                BoxShadow(
-                    color: Colors.black26, blurRadius: 5, offset: Offset(3, 3)),
-              ],
             ),
+            child: CircleAvatar(
+              radius: 28,
+              backgroundColor: isDarkMode
+                  ? AppColors.darkCardBackground
+                  : AppColors.lightCardBackground,
+              child: Text(
+                "U",
+                style: GoogleFonts.poppins(
+                  color:
+                      isDarkMode ? AppColors.darkAccent : AppColors.lightAccent,
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  decoration: TextDecoration.none,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
             child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(menuItems[index]['icon'], size: 20, color: Colors.white),
-                const SizedBox(height: 8),
                 Text(
-                  menuItems[index]['label'],
+                  "Namaste, Devotee!",
                   style: GoogleFonts.poppins(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w500,
-                    fontSize: 12,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w600,
+                    color:
+                        isDarkMode ? AppColors.darkText : AppColors.lightText,
+                    decoration: TextDecoration.none,
+                  ),
+                ),
+                Text(
+                  "Your spiritual journey continues",
+                  style: GoogleFonts.poppins(
+                    fontSize: 14,
+                    color: Colors.grey[600],
+                    decoration: TextDecoration.none,
                   ),
                 ),
               ],
             ),
           ),
-        );
-      },
+        ],
+      ),
     );
+  }
+
+  Widget _buildMenuTiles() {
+    bool isDarkMode = Theme.of(context).brightness == Brightness.dark;
+
+    List<Map<String, dynamic>> menuItems = [
+      {
+        'icon': Icons.local_florist,
+        'title': 'Offerings',
+        'color': Colors.redAccent,
+        'onTap': () => Navigator.push(context,
+            MaterialPageRoute(builder: (_) => CustomerOfferingsPage())),
+      },
+      {
+        'icon': Icons.hotel,
+        'title': 'Room Bookings',
+        'color': Colors.blueAccent,
+        'onTap': () => Navigator.push(
+            context, MaterialPageRoute(builder: (_) => const BookingPage())),
+      },
+      {
+        'icon': Icons.event,
+        'title': 'Events',
+        'color': isDarkMode ? AppColors.darkAccent : AppColors.lightAccent,
+        'onTap': () => Navigator.push(
+            context, MaterialPageRoute(builder: (_) => EventsPage())),
+      },
+      {
+        'icon': Icons.shop,
+        'title': 'Store',
+        'color': Colors.purpleAccent,
+        'onTap': () => Navigator.push(
+            context, MaterialPageRoute(builder: (_) => const StoreHomePage())),
+      },
+      {
+        'icon': Icons.temple_buddhist,
+        'title': 'Pooja Booking',
+        'color': Colors.orange,
+        'onTap': () => Navigator.push(
+            context, MaterialPageRoute(builder: (_) => PoojaListPage())),
+      },
+      {
+        'icon': Icons.volunteer_activism,
+        'title': 'Donations',
+        'color': Colors.green,
+        'onTap': () => Navigator.push(
+            context, MaterialPageRoute(builder: (_) => const DonationPage())),
+      },
+      {
+        'icon': Icons.contact_mail,
+        'title': 'My Bookings',
+        'color': Colors.teal,
+        'onTap': () => Navigator.push(
+            context, MaterialPageRoute(builder: (_) => const MyBookingsPage())),
+      },
+      {
+        'icon': Icons.person,
+        'title': 'Profile',
+        'color': Colors.indigo,
+        'onTap': () => Navigator.push(
+            context, MaterialPageRoute(builder: (_) => SettingsPage())),
+      },
+    ];
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+      child: GridView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          crossAxisSpacing: 16,
+          mainAxisSpacing: 14,
+          childAspectRatio: 1.2,
+        ),
+        itemCount: menuItems.length,
+        itemBuilder: (context, index) {
+          return GestureDetector(
+            onTap: menuItems[index]['onTap'],
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                gradient: LinearGradient(
+                  colors: [
+                    menuItems[index]['color'].withOpacity(0.9),
+                    menuItems[index]['color'].withOpacity(0.6),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+              ),
+              child: Stack(
+                children: [
+                  Positioned(
+                    top: -10,
+                    right: -20,
+                    child: Container(
+                      width: 80,
+                      height: 80,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.white.withOpacity(0.1),
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Icon(
+                            menuItems[index]['icon'],
+                            color: Colors.white,
+                            size: 28,
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        Text(
+                          menuItems[index]['title'],
+                          style: GoogleFonts.poppins(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                            decoration: TextDecoration.none,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  void _logout() async {
+    bool confirmLogout = await _showLogoutConfirmationDialog();
+    if (confirmLogout) {
+      await FirebaseAuth.instance.signOut();
+      await _clearSharedPreferences();
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (context) => LoginLanding()),
+        (route) => false,
+      );
+    }
+  }
+
+  Future<void> _clearSharedPreferences() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.clear();
+  }
+
+  Future<bool> _showLogoutConfirmationDialog() async {
+    return await showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text("Logout"),
+            content: const Text("Are you sure you want to logout?"),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text("Cancel"),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                child:
+                    const Text("Logout", style: TextStyle(color: Colors.red)),
+              ),
+            ],
+          ),
+        ) ??
+        false;
   }
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      child: Column(
-        children: [
-          _buildBanner(),
-          const SizedBox(height: 20),
-          _buildMenuGrid(),
-        ],
+    bool isDarkMode = Theme.of(context).brightness == Brightness.dark;
+
+    return WillPopScope(
+      onWillPop: () async {
+        _logout(); // Call the logout method when back is pressed
+        return false; // Return false to prevent the default back navigation
+      },
+      child: Container(
+        color:
+            isDarkMode ? AppColors.darkBackground : AppColors.lightBackground,
+        child: RefreshIndicator(
+          color: isDarkMode ? AppColors.darkAccent : AppColors.lightAccent,
+          onRefresh: _fetchBannerUrls,
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildBanner(),
+                _buildUserHeader(),
+                _buildMenuTiles(),
+                const SizedBox(height: 16),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

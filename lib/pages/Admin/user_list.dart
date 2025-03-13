@@ -17,7 +17,9 @@ class _UserListPageState extends State<UserListPage> {
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
+  final TextEditingController _searchController = TextEditingController();
   String _countryCode = "+91"; // Default country code (India)
+  String _searchQuery = ""; // To store search query
 
   /// Validates Email Format
   bool _isValidEmail(String email) {
@@ -58,12 +60,10 @@ class _UserListPageState extends State<UserListPage> {
         String uid = firebaseUser.uid;
         print("User created with UID: $uid");
 
-        // Send email verification
         print("Sending email verification...");
         await firebaseUser.sendEmailVerification();
         print("Verification email sent.");
 
-        // Store user in Firestore `users` collection
         print("Storing user in Firestore...");
         await _firestore.collection('users').doc(uid).set({
           'user_name': name,
@@ -76,7 +76,6 @@ class _UserListPageState extends State<UserListPage> {
 
         _showToast("User added! Verification email sent.", Colors.green);
 
-        // Clear inputs
         _nameController.clear();
         _emailController.clear();
         _phoneController.clear();
@@ -87,8 +86,6 @@ class _UserListPageState extends State<UserListPage> {
       _showToast("Error: ${e.toString()}", Colors.red);
     }
   }
-
-  /// Updates the `verified` field in Firestore when the user verifies their email
 
   /// Displays a toast message
   void _showToast(String message, Color color) {
@@ -163,6 +160,22 @@ class _UserListPageState extends State<UserListPage> {
     }
   }
 
+  /// Filter users based on search query
+  List<QueryDocumentSnapshot> _filterUsers(List<QueryDocumentSnapshot> users) {
+    if (_searchQuery.isEmpty) return users;
+
+    String query = _searchQuery.toLowerCase();
+    return users.where((user) {
+      String name = (user['user_name'] ?? '').toLowerCase();
+      String email = (user['email'] ?? '').toLowerCase();
+      String phone = (user['phone'] ?? '').toLowerCase();
+      
+      return name.contains(query) || 
+             email.contains(query) || 
+             phone.contains(query);
+    }).toList();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -178,6 +191,29 @@ class _UserListPageState extends State<UserListPage> {
             onPressed: _showAddUserDialog,
           ),
         ],
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(60.0),
+          child: Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: 'Search by name, email, or phone...',
+                prefixIcon: const Icon(Icons.search),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8.0),
+                ),
+                filled: true,
+                fillColor: Colors.white,
+              ),
+              onChanged: (value) {
+                setState(() {
+                  _searchQuery = value;
+                });
+              },
+            ),
+          ),
+        ),
       ),
       body: StreamBuilder(
         stream: _firestore
@@ -191,12 +227,18 @@ class _UserListPageState extends State<UserListPage> {
           if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
             return const Center(child: Text("No users found"));
           }
-          var users = snapshot.data!.docs;
+          
+          var filteredUsers = _filterUsers(snapshot.data!.docs);
+          
+          if (filteredUsers.isEmpty) {
+            return const Center(child: Text("No matching users found"));
+          }
+
           return ListView.builder(
             padding: const EdgeInsets.all(16),
-            itemCount: users.length,
+            itemCount: filteredUsers.length,
             itemBuilder: (context, index) {
-              var user = users[index];
+              var user = filteredUsers[index];
               bool isVerified = user['verified'] ?? false;
 
               return Card(

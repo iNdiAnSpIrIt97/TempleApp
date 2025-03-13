@@ -94,7 +94,7 @@ class AuthService {
             context, MaterialPageRoute(builder: (_) => AdminDashboard()));
       } else {
         Navigator.pushReplacement(
-            context, MaterialPageRoute(builder: (_) => UserDashboard()));
+            context, MaterialPageRoute(builder: (_) => UserDashboardContent()));
       }
     } catch (e) {
       throw FirebaseAuthException(

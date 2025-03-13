@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'dart:ui';
 import 'package:fluttertoast/fluttertoast.dart';
-import 'package:temple_app/pages/Login/forgor_password.dart';
+import 'package:temple_app/pages/Login/forgot_password.dart';
 import 'package:temple_app/pages/Login/login_landing.dart';
 import 'package:temple_app/services/auth_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:developer' as developer;
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -20,6 +21,29 @@ class _LoginPageState extends State<LoginPage> {
   final TextEditingController _passwordController = TextEditingController();
   final AuthService _authService = AuthService();
   bool _isLoading = false;
+
+  // Method to set user preferences including isGuest
+  Future<void> _setUserPreferences(
+      User user, Map<String, dynamic> userData) async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setString('email', userData['email'] ?? '');
+    await prefs.setString('phone', userData['phone'] ?? '');
+    await prefs.setString('role', userData['role'] ?? '');
+    await prefs.setString('user_name', userData['user_name'] ?? '');
+    await prefs.setBool('isLoggedIn', true);
+    await prefs.setBool(
+        'isGuest', false); // Set as non-guest on successful login
+    await prefs.setString('uid', user.uid);
+
+    developer.log('SharedPreferences set after login:');
+    developer.log('Email: ${prefs.getString('email')}');
+    developer.log('Phone: ${prefs.getString('phone')}');
+    developer.log('Role: ${prefs.getString('role')}');
+    developer.log('User Name: ${prefs.getString('user_name')}');
+    developer.log('isLoggedIn: ${prefs.getBool('isLoggedIn')}');
+    developer.log('isGuest: ${prefs.getBool('isGuest')}');
+    developer.log('UID: ${prefs.getString('uid')}');
+  }
 
   Future<void> _login() async {
     String email = _emailController.text.trim();
@@ -38,21 +62,20 @@ class _LoginPageState extends State<LoginPage> {
     setState(() => _isLoading = true);
 
     try {
-      // Call login function without expecting a return value
       await _authService.login(email, password, context);
-
-      // Since login succeeds, get the current user
       User? user = FirebaseAuth.instance.currentUser;
 
+      developer.log('Login attempt with email: $email');
+
       if (user != null) {
-        // Check if the user's email is verified
+        developer.log('User logged in with UID: ${user.uid}');
+        developer.log('Email verified: ${user.emailVerified}');
+
         if (!user.emailVerified) {
-          // Show a popup to inform the user to verify their email
           _showVerificationPopup(user);
-          return; // Prevent further actions if the user is not verified
+          return;
         }
 
-        // Fetch user data from Firestore
         DocumentSnapshot userDoc = await FirebaseFirestore.instance
             .collection('users')
             .doc(user.uid)
@@ -62,52 +85,62 @@ class _LoginPageState extends State<LoginPage> {
           Map<String, dynamic> userData =
               userDoc.data() as Map<String, dynamic>;
 
-          // Check if the user is verified in Firestore
-          bool isVerifiedInFirestore = userData['verified'] ?? false;
+          developer.log('User data from Firestore: $userData');
 
-          // If the user is verified in Firebase Auth but not in Firestore, update Firestore
+          bool isVerifiedInFirestore = userData['verified'] ?? false;
           if (user.emailVerified && !isVerifiedInFirestore) {
             await FirebaseFirestore.instance
                 .collection('users')
                 .doc(user.uid)
                 .update({'verified': true});
-            print(
+            developer.log(
                 "Updated Firestore 'verified' field to true for UID: ${user.uid}");
           }
 
-          // Store user data in SharedPreferences
-          SharedPreferences prefs = await SharedPreferences.getInstance();
-          await prefs.setString('email', userData['email'] ?? '');
-          await prefs.setString('phone', userData['phone'] ?? '');
-          await prefs.setString('role', userData['role'] ?? '');
-          await prefs.setString('user_name', userData['user_name'] ?? '');
+          // Set user preferences including isGuest
+          await _setUserPreferences(user, userData);
 
-          // Print statements to verify the saved preferences
-          print("Saved Email: ${prefs.getString('email')}");
-          print("Saved Phone: ${prefs.getString('phone')}");
-          print("Saved Role: ${prefs.getString('role')}");
-          print("Saved User Name: ${prefs.getString('user_name')}");
-
-          // Navigate to the dashboard only if the user is verified
           if (user.emailVerified) {
             _showToast("Login Successful!", Colors.green);
-            // TODO: Navigate to Home/Dashboard screen after login
+            // TODO: Navigate to Home/Dashboard
           } else {
             _showToast("Please verify your email to proceed.", Colors.red);
           }
+        } else {
+          developer
+              .log('No user document found in Firestore for UID: ${user.uid}');
         }
+      } else {
+        developer.log('No user returned after login attempt');
       }
     } on FirebaseAuthException catch (e) {
       _handleFirebaseAuthError(e);
     } catch (e) {
       _showToast("An unexpected error occurred", Colors.red);
-      print("Login error: $e");
+      developer.log("Login error: $e", stackTrace: StackTrace.current);
     } finally {
       setState(() => _isLoading = false);
     }
   }
 
-  /// Show a popup to inform the user to verify their email
+  // Helper method to handle logout and reset preferences
+  static Future<void> logout() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('isLoggedIn', false);
+    await prefs.setBool('isGuest', true); // Reset to guest on logout
+    await prefs.remove('email');
+    await prefs.remove('phone');
+    await prefs.remove('role');
+    await prefs.remove('user_name');
+    await prefs.remove('uid');
+
+    await FirebaseAuth.instance.signOut();
+
+    developer.log('User logged out, preferences reset');
+    developer.log('isLoggedIn: ${prefs.getBool('isLoggedIn')}');
+    developer.log('isGuest: ${prefs.getBool('isGuest')}');
+  }
+
   void _showVerificationPopup(User user) {
     showDialog(
       context: context,
@@ -129,14 +162,13 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  /// Resend verification email
   Future<void> _resendVerificationEmail(User user) async {
     try {
       await user.sendEmailVerification();
       _showToast("Verification email sent!", Colors.green);
     } catch (e) {
       _showToast("Failed to resend verification email", Colors.red);
-      print("Error resending verification email: $e");
+      developer.log("Error resending verification email: $e");
     }
   }
 
@@ -164,6 +196,7 @@ class _LoginPageState extends State<LoginPage> {
         message = "Login failed. Please try again.";
     }
     _showToast(message, Colors.red);
+    developer.log('Auth error: ${e.code} - $message');
   }
 
   void _showToast(String message, Color color) {
@@ -252,6 +285,7 @@ class _LoginPageState extends State<LoginPage> {
                       child: TextField(
                         controller: _emailController,
                         keyboardType: TextInputType.emailAddress,
+                        style: const TextStyle(color: Colors.black),
                         decoration: const InputDecoration(
                           labelText: "Email",
                           border: OutlineInputBorder(),
@@ -271,6 +305,7 @@ class _LoginPageState extends State<LoginPage> {
                       child: TextField(
                         controller: _passwordController,
                         obscureText: true,
+                        style: const TextStyle(color: Colors.black),
                         decoration: const InputDecoration(
                           labelText: "Password",
                           border: OutlineInputBorder(),

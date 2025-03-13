@@ -4,7 +4,7 @@
     <uses-permission android:name="android.permission.INTERNET"/>
 
     <application
-        android:label="Temple App"
+        android:label="Manapullikavu Temple App"
         android:icon="@mipmap/launcher_icon">
         
         <meta-data

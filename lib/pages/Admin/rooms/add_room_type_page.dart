@@ -18,6 +18,9 @@ class _AddRoomTypePageState extends State<AddRoomTypePage> {
   final ImagePicker _picker = ImagePicker();
   final TextEditingController _titleController = TextEditingController();
   final TextEditingController _totalRoomsController = TextEditingController();
+  final TextEditingController _roomNosController =
+      TextEditingController(); // New controller for room numbers
+  final TextEditingController _amountController = TextEditingController();
   String _selectedOccupancy = '1'; // Default to single occupancy
   String _selectedType = 'AC'; // Default to AC
   final Map<String, bool> _features = {
@@ -69,10 +72,26 @@ class _AddRoomTypePageState extends State<AddRoomTypePage> {
 
     String title = _titleController.text.trim();
     String totalRooms = _totalRoomsController.text.trim();
+    String roomNosInput = _roomNosController.text.trim();
+    String amountInput = _amountController.text.trim();
 
-    if (title.isEmpty || totalRooms.isEmpty) {
+    if (title.isEmpty ||
+        totalRooms.isEmpty ||
+        roomNosInput.isEmpty ||
+        amountInput.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Please fill all fields")),
+      );
+      setState(() => _isUploading = false);
+      return;
+    }
+
+    List<String> roomNos =
+        roomNosInput.split(',').map((s) => s.trim()).toList();
+    if (roomNos.length != int.parse(totalRooms)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text("Number of room numbers must match total rooms")),
       );
       setState(() => _isUploading = false);
       return;
@@ -99,9 +118,11 @@ class _AddRoomTypePageState extends State<AddRoomTypePage> {
         _features.entries.where((e) => e.value).map((e) => e.key).toList();
 
     try {
-      await _firestore.collection('rooms').add({
+      await _firestore.collection('room').add({
         'title': title,
         'total_rooms': totalRooms,
+        'room_nos': roomNos, // Store room numbers as a list
+        'amount': amountInput,
         'occupancy': int.parse(_selectedOccupancy),
         'type': _selectedType,
         'features': selectedFeatures,
@@ -155,6 +176,20 @@ class _AddRoomTypePageState extends State<AddRoomTypePage> {
             TextField(
               controller: _totalRoomsController,
               decoration: const InputDecoration(labelText: "Total Rooms"),
+              keyboardType: TextInputType.number,
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _roomNosController,
+              decoration: const InputDecoration(
+                labelText: "Room Numbers (comma-separated, e.g., Room1, Room2)",
+                hintText: "Room1, Room2, Room3",
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _amountController,
+              decoration: const InputDecoration(labelText: "Amount"),
               keyboardType: TextInputType.number,
             ),
             const SizedBox(height: 16),

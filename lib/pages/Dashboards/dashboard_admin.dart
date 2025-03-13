@@ -1,11 +1,15 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:carousel_slider/carousel_slider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:temple_app/pages/Admin/customer_message_page.dart';
 import 'package:temple_app/pages/Admin/event_page_admin.dart';
+import 'package:temple_app/pages/Admin/profile_admin.dart';
 import 'package:temple_app/pages/Admin/rooms/room_booking_admin.dart';
 import 'package:temple_app/pages/Admin/update_offerings.dart';
 import 'package:temple_app/pages/Admin/user_list.dart';
@@ -68,6 +72,11 @@ class _AdminDashboardState extends State<AdminDashboard> {
     }
   }
 
+  void settingsNav() {
+    Navigator.push(
+        context, MaterialPageRoute(builder: (context) => const AdminProfile()));
+  }
+
   Future<void> _clearSharedPreferences() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     await prefs.clear();
@@ -110,24 +119,83 @@ class _AdminDashboardState extends State<AdminDashboard> {
   }
 
   void _deleteBanner(String url) async {
-    await FirebaseFirestore.instance
-        .collection('banner')
-        .where('url', isEqualTo: url)
-        .get()
-        .then((snapshot) {
-      for (var doc in snapshot.docs) {
-        doc.reference.delete();
-      }
-    });
-    setState(() {
-      _bannerUrls.remove(url);
-    });
+    try {
+      await FirebaseFirestore.instance
+          .collection('banner')
+          .where('url', isEqualTo: url)
+          .get()
+          .then((snapshot) {
+        for (var doc in snapshot.docs) {
+          doc.reference.delete();
+        }
+      });
+
+      final storageRef = FirebaseStorage.instance.refFromURL(url);
+      await storageRef.delete();
+
+      setState(() {
+        _bannerUrls.remove(url);
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Banner deleted successfully!")),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error deleting banner: $e")),
+      );
+    }
   }
 
-  void _uploadBanner() {
-    // Implement your image upload logic here (e.g., using image_picker)
-    // After uploading, add the new URL to _bannerUrls and update Firestore
-    print("Upload new banner functionality to be implemented");
+  Future<void> _uploadBanner() async {
+    try {
+      // Pick an image from the gallery
+      final ImagePicker picker = ImagePicker();
+      final XFile? image = await picker.pickImage(source: ImageSource.gallery);
+
+      if (image == null) {
+        print("No image selected");
+        return; // User canceled the picker
+      }
+
+      // Convert XFile to File
+      final File imageFile = File(image.path);
+      print("Image path: ${imageFile.path}");
+      print("File exists: ${await imageFile.exists()}");
+
+      // Show loading indicator
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Uploading banner...")),
+      );
+
+      // Upload to Firebase Storage (without compression for now)
+      final storageRef = FirebaseStorage.instance
+          .ref()
+          .child('banners/${DateTime.now().millisecondsSinceEpoch}.jpg');
+      await storageRef.putFile(imageFile);
+      final String downloadUrl = await storageRef.getDownloadURL();
+      print("Download URL: $downloadUrl");
+
+      // Save URL to Firestore
+      await FirebaseFirestore.instance.collection('banner').add({
+        'url': downloadUrl,
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+
+      // Update local state
+      setState(() {
+        _bannerUrls.add(downloadUrl);
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Banner uploaded successfully!")),
+      );
+    } catch (e) {
+      print("Error in _uploadBanner: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error uploading banner: $e")),
+      );
+    }
   }
 
   @override
@@ -141,8 +209,8 @@ class _AdminDashboardState extends State<AdminDashboard> {
           automaticallyImplyLeading: false,
           actions: [
             IconButton(
-              icon: const Icon(Icons.logout),
-              onPressed: _logout,
+              icon: const Icon(Icons.settings),
+              onPressed: settingsNav,
             ),
           ],
         ),
@@ -165,7 +233,38 @@ class _AdminDashboardState extends State<AdminDashboard> {
       child: _isLoading
           ? _buildShimmerEffect()
           : (_bannerUrls.isEmpty
-              ? const Center(child: Text("No Banners Available"))
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Text(
+                        "No Banners Available",
+                        style: TextStyle(fontSize: 16, color: Colors.grey),
+                      ),
+                      const SizedBox(height: 10),
+                      GestureDetector(
+                        onTap: _uploadBanner,
+                        child: Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.grey.shade300,
+                          ),
+                          child: const Icon(
+                            Icons.add,
+                            size: 40,
+                            color: Colors.black54,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 5),
+                      const Text(
+                        "Add Banner",
+                        style: TextStyle(fontSize: 14, color: Colors.black54),
+                      ),
+                    ],
+                  ),
+                )
               : CarouselSlider(
                   options: CarouselOptions(
                     height: 200,
@@ -213,7 +312,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
                         ],
                       );
                     }).toList(),
-                    // Add '+' container as a carousel item
                     GestureDetector(
                       onTap: _uploadBanner,
                       child: Container(

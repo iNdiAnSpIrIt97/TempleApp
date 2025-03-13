@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
-import 'edit_room_booking_page.dart'; // Import the new page
+import 'edit_room_booking_page.dart';
 
 class RoomAllocationPage extends StatefulWidget {
   const RoomAllocationPage({super.key});
@@ -12,7 +12,7 @@ class RoomAllocationPage extends StatefulWidget {
 
 class _RoomAllocationPageState extends State<RoomAllocationPage> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  DateTime _selectedDay = DateTime.now(); // Default to today
+  DateTime _selectedDay = DateTime.now();
 
   Future<void> _pickDate(BuildContext context) async {
     DateTime? pickedDate = await showDatePicker(
@@ -47,19 +47,26 @@ class _RoomAllocationPageState extends State<RoomAllocationPage> {
 
     List<String> bookedRooms =
         List<String>.from(availabilityDoc['booked_rooms'] ?? []);
-    if (!bookedRooms.contains(roomNo)) {
-      _showNoBookingDialog();
-      return;
-    }
-
     List<String> bookingIds =
         List<String>.from(availabilityDoc['booking_id'] ?? []);
-    if (bookingIds.isEmpty) {
+    if (!bookedRooms.contains(roomNo) || bookingIds.isEmpty) {
       _showNoBookingDialog();
       return;
     }
 
-    String bookingId = bookingIds[0]; // Assume first booking ID for simplicity
+    String? bookingId;
+    for (int i = 0; i < bookedRooms.length; i++) {
+      if (bookedRooms[i] == roomNo) {
+        bookingId = bookingIds[i];
+        break;
+      }
+    }
+
+    if (bookingId == null) {
+      _showNoBookingDialog();
+      return;
+    }
+
     DocumentSnapshot bookingDoc =
         await _firestore.collection('room_bookings').doc(bookingId).get();
 
@@ -70,12 +77,12 @@ class _RoomAllocationPageState extends State<RoomAllocationPage> {
 
     var data = bookingDoc.data() as Map<String, dynamic>;
     String allocatedRoom = data['allocated_room'] ?? 'N/A';
-    Timestamp? dateOfBooking = data['date_of_booking'];
+    Timestamp? dateOfBooking = data['booking_date'];
     Timestamp? fromDate = data['from_date'];
     Timestamp? toDate = data['to_date'];
-    List<String> guestNames = List<String>.from(data['guest_names'] ?? []);
+    List<dynamic> guests = data['guests'] ?? [];
+    String guestNames = guests.map((g) => g['name']).join(', ');
     bool guestUser = data['guest_user'] ?? false;
-    String idNumber = data['id_number'] ?? 'N/A';
     bool paymentStatus = data['payment_status'] ?? false;
     String userId = data['user_id'] ?? 'N/A';
     String userName = data['user_name'] ?? 'N/A';
@@ -96,9 +103,8 @@ class _RoomAllocationPageState extends State<RoomAllocationPage> {
               Text(
                   "To Date: ${toDate != null ? DateFormat('yyyy-MM-dd HH:mm').format(toDate.toDate()) : 'N/A'}"),
               Text(
-                  "Guest Names: ${guestNames.isNotEmpty ? guestNames.join(', ') : 'N/A'}"),
+                  "Guest Names: ${guestNames.isNotEmpty ? guestNames : 'N/A'}"),
               Text("Guest User: $guestUser"),
-              Text("ID Number: $idNumber"),
               Text("Payment Status: $paymentStatus"),
               Text("User ID: $userId"),
               Text("User Name: $userName"),
@@ -112,12 +118,12 @@ class _RoomAllocationPageState extends State<RoomAllocationPage> {
           ),
           TextButton(
             onPressed: () {
-              Navigator.pop(context); // Close dialog
+              Navigator.pop(context);
               Navigator.push(
                 context,
                 MaterialPageRoute(
                   builder: (context) => EditRoomBookingPage(
-                    bookingId: bookingId,
+                    bookingId: bookingId!,
                     roomId: roomId,
                     selectedDay: _selectedDay,
                   ),
