@@ -176,7 +176,7 @@ class _PoojaManagementPageState extends State<PoojaManagementPage> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: Text(booking['pooja_title']),
+          title: Text(booking['title']),
           content: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
@@ -327,9 +327,9 @@ class _PoojaManagementPageState extends State<PoojaManagementPage> {
         return ListView(
           children: snapshot.data!.docs.map((doc) {
             return ListTile(
-              title: Text(doc['pooja_title']),
+              title: Text(doc['title']),
               subtitle: Text(
-                  "User: ${doc['user_name']}, Date: ${doc['date_booked']}"),
+                  "UserId: ${doc['userId']}, Date: ${doc['selectedDate']}"),
               onTap: () => _showBookingDetails(doc),
               trailing: IconButton(
                 icon: const Icon(Icons.delete),

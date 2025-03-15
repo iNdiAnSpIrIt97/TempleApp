@@ -77,7 +77,7 @@ class _DonationsPageState extends State<DonationsPage>
         ),
         Expanded(
           child: StreamBuilder(
-            stream: _firestore.collection('donation').snapshots(),
+            stream: _firestore.collection('donations').snapshots(),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator());
@@ -88,7 +88,7 @@ class _DonationsPageState extends State<DonationsPage>
               var donations = snapshot.data!.docs;
 
               donations = donations.where((donation) {
-                return (donation['user_name']?.toString().toLowerCase() ?? "")
+                return (donation['userName']?.toString().toLowerCase() ?? "")
                         .contains(_searchQuery) ||
                     (donation['phone']?.toString().toLowerCase() ?? "")
                         .contains(_searchQuery) ||
@@ -135,7 +135,12 @@ class _DonationsPageState extends State<DonationsPage>
                 itemCount: donations.length,
                 itemBuilder: (context, index) {
                   var donation = donations[index];
-                  bool isGuest = (donation['guest_user'] as bool?) ?? false;
+                  bool isGuest = false;
+                  if (donation['guest_user'] as bool == true) {
+                    setState(() {
+                      isGuest = true;
+                    });
+                  }
                   return Card(
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12)),
@@ -151,7 +156,7 @@ class _DonationsPageState extends State<DonationsPage>
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               Text(
-                                donation['user_name'] ?? 'Unknown',
+                                donation['userName'] ?? 'Unknown',
                                 style: const TextStyle(
                                     fontSize: 18, fontWeight: FontWeight.bold),
                               ),
@@ -177,15 +182,15 @@ class _DonationsPageState extends State<DonationsPage>
                           Text("Amount: ₹${donation['amount'] ?? '0'}",
                               style: const TextStyle(fontSize: 16)),
                           Text(
-                              "Payment Mode: ${donation['payment_mode'] ?? 'N/A'}",
+                              "Payment Id: ${donation['paymentId'] ?? 'N/A'}",
                               style: const TextStyle(fontSize: 16)),
                           Text(
-                              "Donation For: ${donation['donation_for'] ?? 'N/A'}",
+                              "Donation For: ${donation['donationType'] ?? 'N/A'}",
                               style: const TextStyle(fontSize: 16)),
-                          Text("Phone: ${donation['phone'] ?? 'N/A'}",
-                              style: const TextStyle(fontSize: 16)),
+                          // Text("Phone: ${donation['phone'] ?? 'N/A'}",
+                          //     style: const TextStyle(fontSize: 16)),
                           Text(
-                            "Date: ${donation['date'] is Timestamp ? (donation['date'] as Timestamp).toDate().toLocal().toString() : 'N/A'}",
+                            "Date: ${donation['timestamp'] is Timestamp ? (donation['timestamp'] as Timestamp).toDate().toLocal().toString() : 'N/A'}",
                             style: const TextStyle(
                                 fontSize: 16, color: Colors.grey),
                           ),

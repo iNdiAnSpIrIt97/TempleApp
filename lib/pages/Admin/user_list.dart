@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:intl_phone_field/intl_phone_field.dart';
+import 'package:temple_app/pages/Admin/user_bookings.dart';
 
 class UserListPage extends StatefulWidget {
   const UserListPage({super.key});
@@ -169,10 +170,10 @@ class _UserListPageState extends State<UserListPage> {
       String name = (user['user_name'] ?? '').toLowerCase();
       String email = (user['email'] ?? '').toLowerCase();
       String phone = (user['phone'] ?? '').toLowerCase();
-      
-      return name.contains(query) || 
-             email.contains(query) || 
-             phone.contains(query);
+
+      return name.contains(query) ||
+          email.contains(query) ||
+          phone.contains(query);
     }).toList();
   }
 
@@ -227,9 +228,9 @@ class _UserListPageState extends State<UserListPage> {
           if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
             return const Center(child: Text("No users found"));
           }
-          
+
           var filteredUsers = _filterUsers(snapshot.data!.docs);
-          
+
           if (filteredUsers.isEmpty) {
             return const Center(child: Text("No matching users found"));
           }
@@ -288,6 +289,18 @@ class _UserListPageState extends State<UserListPage> {
                       ),
                     ],
                   ),
+                  onTap: () {
+                    // Navigate to UserBookingsPage with the selected user's UID
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => UserBookingsPage(
+                          userId: user.id, // Pass the user's UID
+                          userName: user['user_name'] ?? 'Unknown User',
+                        ),
+                      ),
+                    );
+                  },
                 ),
               );
             },

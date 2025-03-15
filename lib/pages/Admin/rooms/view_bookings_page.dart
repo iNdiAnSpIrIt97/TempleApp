@@ -153,14 +153,20 @@ class _BookingTileState extends State<BookingTile> {
 
   @override
   Widget build(BuildContext context) {
-    String roomId = widget.booking['room_id'];
+    String allocatedRoom = widget.booking['allocated_room'];
+    Timestamp bookingDate = widget.booking['booking_date'];
     Timestamp fromDate = widget.booking['from_date'];
     Timestamp toDate = widget.booking['to_date'];
     String userName = widget.booking['user_name'];
-    List<dynamic> guestNames = widget.booking['guest_names'];
+    List<dynamic> guests = widget.booking['guests'];
     bool paymentStatus = widget.booking['payment_status'];
-    String idNumber = widget.booking['id_number'];
-    bool guestUser = widget.booking['guest_user'];
+    int amount = widget.booking['amount'];
+    String paymentId = widget.booking['payment_id'];
+    int persons = widget.booking['persons'];
+    String status = widget.booking['status'];
+    String userEmail = widget.booking['user_email'];
+    String userPhone = widget.booking['user_phone'];
+    String roomId = widget.booking['room_id'];
 
     // Convert timestamp to local date midnight (Epoch) for room_availability lookup
     DateTime fromDateTime = fromDate.toDate();
@@ -194,13 +200,35 @@ class _BookingTileState extends State<BookingTile> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text("Booking ID: ${widget.booking.id}"),
+                Text("Allocated Room: $allocatedRoom"),
+                Text(
+                    "Booking Date: ${DateFormat('MMM d, yyyy hh:mm a').format(bookingDate.toDate())}"),
                 Text(
                     "To: ${DateFormat('MMM d, yyyy hh:mm a').format(toDate.toDate())}"),
-                const SizedBox(height: 8),
-                Text("Guests: ${guestNames.join(', ')}"),
-                Text("ID Number: $idNumber"),
-                Text("Guest User: ${guestUser ? 'Yes' : 'No'}"),
+                Text("Amount: ₹$amount"),
+                Text("Persons: $persons"),
+                Text("Payment ID: $paymentId"),
                 Text("Payment Status: ${paymentStatus ? 'Paid' : 'Pending'}"),
+                Text("Status: $status"),
+                Text("User Email: $userEmail"),
+                Text("User Phone: $userPhone"),
+                const SizedBox(height: 8),
+                Text("Guests:"),
+                ...guests
+                    .map((guest) => Padding(
+                          padding: const EdgeInsets.only(left: 16.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text("Name: ${guest['name']}"),
+                              Text("Age: ${guest['age']}"),
+                              Text("ID Number: ${guest['id_number']}"),
+                              Text("ID Type: ${guest['id_type']}"),
+                              const Divider(),
+                            ],
+                          ),
+                        ))
+                    .toList(),
                 const SizedBox(height: 8),
                 FutureBuilder<DocumentSnapshot>(
                   future: _fetchRoomDetails(roomId),

@@ -71,11 +71,13 @@ class _CustomerMessagePageState extends State<CustomerMessagePage> {
     try {
       String replyDate =
           DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
+      String formattedReply =
+          "Admin: ${_replyController.text.trim()}"; // Format admin reply
       await _firestore.collection('customer_messages').doc(messageId).update({
-        'Replied_on': replyDate,
-        'Reply_by_admin': true,
-        'Status': 'Replied',
-        'Admin_reply': _replyController.text.trim(),
+        'replied_on': replyDate,
+        'reply_by_admin': true,
+        'status': 'Replied',
+        'replies': FieldValue.arrayUnion([formattedReply]),
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -100,8 +102,7 @@ class _CustomerMessagePageState extends State<CustomerMessagePage> {
         content: StatefulBuilder(
           builder: (context, setState) => DropdownButton<String>(
             value: newStatus,
-            items: ['Pending', 'In Progress', 'Replied', 'Closed']
-                .map((String value) {
+            items: ['Pending', 'Replied', 'Closed'].map((String value) {
               return DropdownMenuItem<String>(
                 value: value,
                 child: Text(value),
@@ -126,7 +127,7 @@ class _CustomerMessagePageState extends State<CustomerMessagePage> {
                     .collection('customer_messages')
                     .doc(messageId)
                     .update({
-                  'Status': newStatus,
+                  'status': newStatus,
                 });
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text("Status updated successfully!")),
@@ -145,12 +146,52 @@ class _CustomerMessagePageState extends State<CustomerMessagePage> {
     );
   }
 
-  void _showReplyDialog(String? adminReply) {
+  void _showReplyDialog(String messageId) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text("Admin Reply"),
-        content: Text(adminReply ?? "No reply content available"),
+        title: const Text("Conversation"),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: StreamBuilder<DocumentSnapshot>(
+            stream: _firestore
+                .collection('customer_messages')
+                .doc(messageId)
+                .snapshots(),
+            builder: (context, snapshot) {
+              if (!snapshot.hasData) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              var message = snapshot.data!.data() as Map<String, dynamic>?;
+              List<dynamic> replies = message?['replies'] ?? [];
+              String status = message?['status'] ?? 'Pending';
+
+              if (status == 'Closed') {
+                return const Text("Conversation closed.");
+              }
+
+              if (replies.isEmpty || replies.every((r) => r == '')) {
+                return const Text("No replies yet.");
+              }
+
+              return ListView.builder(
+                shrinkWrap: true,
+                itemCount: replies.length,
+                itemBuilder: (context, index) {
+                  String reply = replies[index] as String? ?? '';
+                  if (reply.isEmpty)
+                    return const SizedBox.shrink(); // Skip empty strings
+                  return ListTile(
+                    title: Text(reply),
+                    tileColor: reply.startsWith('Admin:')
+                        ? Colors.blue[50]
+                        : Colors.green[50],
+                  );
+                },
+              );
+            },
+          ),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -159,6 +200,13 @@ class _CustomerMessagePageState extends State<CustomerMessagePage> {
         ],
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _replyController.dispose();
+    _searchController.dispose();
+    super.dispose();
   }
 
   @override
@@ -235,11 +283,12 @@ class _CustomerMessagePageState extends State<CustomerMessagePage> {
                 }
 
                 var messages = snapshot.data!.docs;
+
                 // Filter messages
                 var filteredMessages = messages.where((message) {
                   String userName =
                       (message['user_name'] ?? 'N/A').toLowerCase();
-                  String issue = (message['Issue'] ?? 'N/A').toLowerCase();
+                  String issue = (message['issue'] ?? 'N/A').toLowerCase();
                   return userName.contains(_searchQuery) ||
                       issue.contains(_searchQuery);
                 }).toList();
@@ -258,14 +307,14 @@ class _CustomerMessagePageState extends State<CustomerMessagePage> {
                           .compareTo(b['user_name'] ?? 'N/A');
                       break;
                     case 'Status':
-                      compare = (a['Status'] ?? 'Pending')
-                          .compareTo(b['Status'] ?? 'Pending');
+                      compare = (a['status'] ?? 'Pending')
+                          .compareTo(b['status'] ?? 'Pending');
                       break;
                     case 'Date':
                     default:
-                      compare = (a['Date'] as Timestamp? ?? Timestamp.now())
+                      compare = (a['date'] as Timestamp? ?? Timestamp.now())
                           .compareTo(
-                              b['Date'] as Timestamp? ?? Timestamp.now());
+                              b['date'] as Timestamp? ?? Timestamp.now());
                   }
                   return _sortAscending ? compare : -compare;
                 });
@@ -276,19 +325,16 @@ class _CustomerMessagePageState extends State<CustomerMessagePage> {
                   itemBuilder: (context, index) {
                     var message = filteredMessages[index];
                     String messageId = message.id;
-                    Timestamp? date = message['Date'];
-                    String description = message['Description'] ?? 'N/A';
-                    String issue = message['Issue'] ?? 'N/A';
-                    String repliedOn = message['Replied_on'] ?? '';
-                    bool replyByAdmin = message['Reply_by_admin'] ?? false;
-                    String status = message['Status'] ?? 'Pending';
+                    Timestamp? date = message['date'];
+                    String description = message['description'] ?? 'N/A';
+                    String issue = message['issue'] ?? 'N/A';
+                    String repliedOn = message['replied_on'] ?? '';
+                    bool replyByAdmin =
+                        message['reply_by_admin'] as bool? ?? false;
+                    String status = message['status'] ?? 'Pending';
                     String userId = message['user_id'] ?? 'N/A';
                     String userName = message['user_name'] ?? 'N/A';
-                    final messageData = message.data() as Map<String, dynamic>?;
-                    String? adminReply =
-                        messageData?.containsKey('Admin_reply') == true
-                            ? messageData!['Admin_reply'] as String?
-                            : null;
+                    List<dynamic> replies = message['replies'] ?? [];
 
                     return Card(
                       elevation: 4,
@@ -369,7 +415,8 @@ class _CustomerMessagePageState extends State<CustomerMessagePage> {
                                       _updateStatus(messageId, status),
                                   child: const Text("Update Status"),
                                 ),
-                                if (replyByAdmin && repliedOn.isNotEmpty)
+                                if (replies.length > 1 ||
+                                    (replies.length == 1 && replies[0] != ''))
                                   ElevatedButton(
                                     style: ElevatedButton.styleFrom(
                                       backgroundColor: Colors.green,
@@ -378,10 +425,10 @@ class _CustomerMessagePageState extends State<CustomerMessagePage> {
                                       ),
                                     ),
                                     onPressed: () =>
-                                        _showReplyDialog(adminReply),
-                                    child: const Text("See Reply"),
-                                  )
-                                else
+                                        _showReplyDialog(messageId),
+                                    child: const Text("See Conversation"),
+                                  ),
+                                if (status != 'Closed')
                                   ElevatedButton(
                                     style: ElevatedButton.styleFrom(
                                       backgroundColor: Colors.blue,

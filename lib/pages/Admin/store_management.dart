@@ -13,7 +13,8 @@ class StoreManagementPage extends StatefulWidget {
   State<StoreManagementPage> createState() => _StoreManagementPageState();
 }
 
-class _StoreManagementPageState extends State<StoreManagementPage> {
+class _StoreManagementPageState extends State<StoreManagementPage>
+    with SingleTickerProviderStateMixin {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseStorage _storage = FirebaseStorage.instance;
   final ImagePicker _picker = ImagePicker();
@@ -25,6 +26,23 @@ class _StoreManagementPageState extends State<StoreManagementPage> {
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _priceController = TextEditingController();
   final TextEditingController _quantityController = TextEditingController();
+
+  late TabController _tabController;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    _nameController.dispose();
+    _priceController.dispose();
+    _quantityController.dispose();
+    super.dispose();
+  }
 
   Future<void> _requestStoragePermission() async {
     var status = await Permission.storage.status;
@@ -306,79 +324,439 @@ class _StoreManagementPageState extends State<StoreManagementPage> {
     );
   }
 
+  @override
+  Widget build(BuildContext context) {
+    return DefaultTabController(
+      length: 2,
+      child: Stack(
+        children: [
+          Scaffold(
+            appBar: AppBar(
+              title: const Text("Store Management"),
+              bottom: TabBar(
+                controller: _tabController,
+                tabs: const [
+                  Tab(text: 'Products'),
+                  Tab(text: 'Store Bookings'),
+                ],
+                indicatorColor: Colors.white,
+                labelColor: Colors.white,
+                unselectedLabelColor: Colors.grey,
+              ),
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.refresh),
+                  onPressed: () => setState(() {}),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.add),
+                  onPressed: _tabController.index == 0
+                      ? () => _showProductDialog()
+                      : null, // Only enable "Add" for the Products tab
+                ),
+              ],
+            ),
+            body: TabBarView(
+              controller: _tabController,
+              children: [
+                ProductsTab(
+                  firestore: _firestore,
+                  isLoading: _isLoading,
+                  onEdit: (product) => _showProductDialog(product: product),
+                  onDelete: _deleteProduct,
+                  setLoading: (value) => setState(() => _isLoading = value),
+                ),
+                StoreBookingsTab(firestore: _firestore),
+              ],
+            ),
+          ),
+          if (_isUploading)
+            Container(
+              color: Colors.black54,
+              child: const Center(
+                child: CircularProgressIndicator(),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+// Widget for the Products Tab
+class ProductsTab extends StatelessWidget {
+  final FirebaseFirestore firestore;
+  final bool isLoading;
+  final Function(DocumentSnapshot) onEdit;
+  final Function(String) onDelete;
+  final Function(bool) setLoading;
+
+  const ProductsTab({
+    Key? key,
+    required this.firestore,
+    required this.isLoading,
+    required this.onEdit,
+    required this.onDelete,
+    required this.setLoading,
+  }) : super(key: key);
+
   Stream<QuerySnapshot> _getProductsStream() {
-    return _firestore.collection('store').snapshots();
+    return firestore.collection('store').snapshots();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
+    return StreamBuilder(
+      stream: _getProductsStream(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting || isLoading) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          return const Center(child: Text("No products found"));
+        }
+
+        var products = snapshot.data!.docs;
+        return ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: products.length,
+          itemBuilder: (context, index) {
+            var product = products[index];
+            List<dynamic> imageUrls = product['images'] ?? [];
+
+            return Card(
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8)),
+              elevation: 2,
+              margin: const EdgeInsets.symmetric(vertical: 6),
+              child: ListTile(
+                leading: imageUrls.isNotEmpty
+                    ? Image.network(imageUrls.first,
+                        width: 50, height: 50, fit: BoxFit.cover)
+                    : Container(
+                        width: 50,
+                        height: 50,
+                        decoration: BoxDecoration(
+                          color: Colors.grey[200],
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: const Center(child: Text("No Image"))),
+                title: Text(product['name'],
+                    style: const TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: Text(
+                    "Price: ₹${product['price']}\nQuantity: ${product['quantity']}",
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                        icon: const Icon(Icons.edit),
+                        onPressed: () => onEdit(product)),
+                    IconButton(
+                        icon: const Icon(Icons.delete),
+                        onPressed: () => onDelete(product.id)),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+// Widget for the Store Bookings Tab
+class StoreBookingsTab extends StatefulWidget {
+  final FirebaseFirestore firestore;
+
+  const StoreBookingsTab({Key? key, required this.firestore})
+      : super(key: key);
+
+  @override
+  _StoreBookingsTabState createState() => _StoreBookingsTabState();
+}
+
+class _StoreBookingsTabState extends State<StoreBookingsTab> {
+  final TextEditingController _trackingIdController = TextEditingController();
+  final TextEditingController _searchController = TextEditingController();
+  String _selectedStatus = 'Order Placed';
+  String _sortOption = 'Purchase Date (Newest First)';
+
+  // List of possible statuses for the dropdown
+  final List<String> _statusOptions = [
+    'Order Placed',
+    'Shipped',
+    'In Transit',
+    'Delivered',
+    'completed',
+    'Cancelled',
+  ];
+
+  // Sort options
+  final List<String> _sortOptions = [
+    'Purchase Date (Newest First)',
+    'Purchase Date (Oldest First)',
+    'Status (A-Z)',
+  ];
+
+  // Extract phone number from address (assuming format: "Phone: 1234567890" at the end)
+  String _extractPhoneNumber(String? address) {
+    if (address == null) return 'N/A';
+    final phoneMatch = RegExp(r'Phone:\s*(\d+)').firstMatch(address);
+    return phoneMatch?.group(1) ?? 'N/A';
+  }
+
+  void _showTrackingDialog(DocumentSnapshot booking) {
+    final bookingData = booking.data() as Map<String, dynamic>;
+    _trackingIdController.text = bookingData['tracking_id'] ?? '';
+    _selectedStatus = _statusOptions.contains(bookingData['status']?.toLowerCase())
+        ? bookingData['status']?.toLowerCase() ?? 'Order Placed'
+        : 'Order Placed';
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text("Update Tracking Details"),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: _trackingIdController,
+                  decoration: const InputDecoration(labelText: "Tracking ID"),
+                ),
+                const SizedBox(height: 10),
+                DropdownButton<String>(
+                  value: _selectedStatus,
+                  isExpanded: true,
+                  items: _statusOptions.map((String status) {
+                    return DropdownMenuItem<String>(
+                      value: status,
+                      child: Text(status),
+                    );
+                  }).toList(),
+                  onChanged: (String? newValue) {
+                    if (newValue != null) {
+                      setDialogState(() {
+                        _selectedStatus = newValue;
+                      });
+                    }
+                  },
+                  hint: const Text('Select Status'),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Cancel"),
+            ),
+            TextButton(
+              onPressed: () async {
+                try {
+                  await widget.firestore
+                      .collection('store_bookings')
+                      .doc(booking.id)
+                      .update({
+                    'tracking_id': _trackingIdController.text.trim().isNotEmpty
+                        ? _trackingIdController.text.trim()
+                        : FieldValue.delete(),
+                    'status': _selectedStatus,
+                  });
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                        content: Text("Tracking details updated successfully!")),
+                  );
+                  Navigator.pop(context);
+                } catch (e) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                        content:
+                            Text("Failed to update tracking details: $e")),
+                  );
+                }
+              },
+              child: const Text("Update"),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showSortDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Sort By'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: _sortOptions.map((String option) {
+              return RadioListTile<String>(
+                title: Text(option),
+                value: option,
+                groupValue: _sortOption,
+                onChanged: (String? newValue) {
+                  if (newValue != null) {
+                    setState(() {
+                      _sortOption = newValue;
+                    });
+                    Navigator.pop(context);
+                  }
+                },
+              );
+            }).toList(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Cancel"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _trackingIdController.dispose();
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
       children: [
-        Scaffold(
-          appBar: AppBar(
-            title: const Text("Store Management"),
-            actions: [
+        Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _searchController,
+                  decoration: const InputDecoration(
+                    labelText: 'Search by User ID, Booking ID, or Phone',
+                    border: OutlineInputBorder(),
+                    suffixIcon: Icon(Icons.search),
+                  ),
+                  onChanged: (value) => setState(() {}),
+                ),
+              ),
               IconButton(
-                  icon: const Icon(Icons.refresh),
-                  onPressed: () => setState(() {})),
-              IconButton(
-                  icon: const Icon(Icons.add),
-                  onPressed: () => _showProductDialog()),
+                icon: const Icon(Icons.filter_list),
+                onPressed: _showSortDialog,
+                tooltip: 'Sort',
+              ),
             ],
           ),
-          body: StreamBuilder(
-            stream: _getProductsStream(),
+        ),
+        Expanded(
+          child: StreamBuilder<QuerySnapshot>(
+            stream: widget.firestore
+                .collection('store_bookings')
+                .snapshots(),
             builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting ||
-                  _isLoading) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator());
               }
               if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                return const Center(child: Text("No products found"));
+                return const Center(child: Text('No store bookings found.'));
               }
 
-              var products = snapshot.data!.docs;
+              var bookings = snapshot.data!.docs;
+
+              // Filter bookings based on search
+              String searchQuery = _searchController.text.toLowerCase();
+              if (searchQuery.isNotEmpty) {
+                bookings = bookings.where((doc) {
+                  final data = doc.data() as Map<String, dynamic>;
+                  final userId = data['user_id']?.toString().toLowerCase() ?? '';
+                  final bookingId = data['booking_id']?.toString().toLowerCase() ?? '';
+                  final phone = _extractPhoneNumber(data['address'])?.toLowerCase() ?? '';
+                  return userId.contains(searchQuery) ||
+                      bookingId.contains(searchQuery) ||
+                      phone.contains(searchQuery);
+                }).toList();
+              }
+
+              // Sort bookings
+              if (_sortOption == 'Purchase Date (Oldest First)') {
+                bookings.sort((a, b) {
+                  final aDate = (a.data() as Map<String, dynamic>)['purchase_date'] as Timestamp?;
+                  final bDate = (b.data() as Map<String, dynamic>)['purchase_date'] as Timestamp?;
+                  return (aDate?.toDate() ?? DateTime(0)).compareTo(bDate?.toDate() ?? DateTime(0));
+                });
+              } else if (_sortOption == 'Purchase Date (Newest First)') {
+                bookings.sort((a, b) {
+                  final aDate = (a.data() as Map<String, dynamic>)['purchase_date'] as Timestamp?;
+                  final bDate = (b.data() as Map<String, dynamic>)['purchase_date'] as Timestamp?;
+                  return (bDate?.toDate() ?? DateTime(0)).compareTo(aDate?.toDate() ?? DateTime(0));
+                });
+              } else if (_sortOption == 'Status (A-Z)') {
+                bookings.sort((a, b) {
+                  final aStatus = (a.data() as Map<String, dynamic>)['status'] ?? '';
+                  final bStatus = (b.data() as Map<String, dynamic>)['status'] ?? '';
+                  return aStatus.toString().compareTo(bStatus.toString());
+                });
+              }
+
               return ListView.builder(
                 padding: const EdgeInsets.all(16),
-                itemCount: products.length,
+                itemCount: bookings.length,
                 itemBuilder: (context, index) {
-                  var product = products[index];
-                  List<dynamic> imageUrls = product['images'] ?? [];
+                  final booking = bookings[index];
+                  final bookingData = booking.data() as Map<String, dynamic>;
 
                   return Card(
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(8)),
                     elevation: 2,
                     margin: const EdgeInsets.symmetric(vertical: 6),
-                    child: ListTile(
-                      leading: imageUrls.isNotEmpty
-                          ? Image.network(imageUrls.first,
-                              width: 50, height: 50, fit: BoxFit.cover)
-                          : Container(
-                              width: 50,
-                              height: 50,
-                              decoration: BoxDecoration(
-                                color: Colors.grey[200],
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: const Center(child: Text("No Image"))),
-                      title: Text(product['name'],
-                          style: const TextStyle(fontWeight: FontWeight.bold)),
+                    child: ExpansionTile(
+                      leading: const Icon(Icons.receipt, color: Colors.blue),
+                      title: Text(
+                        bookingData['item_name'] ?? 'Unnamed Order',
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
                       subtitle: Text(
-                          "Price: ₹${product['price']}\nQuantity: ${product['quantity']}",
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                              icon: const Icon(Icons.edit),
-                              onPressed: () =>
-                                  _showProductDialog(product: product)),
-                          IconButton(
-                              icon: const Icon(Icons.delete),
-                              onPressed: () => _deleteProduct(product.id)),
-                        ],
+                        'User: ${bookingData['user_id'] ?? 'N/A'}, '
+                        'Booking: ${bookingData['booking_id'] ?? 'N/A'}, '
+                        'Phone: ${_extractPhoneNumber(bookingData['address'])}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      children: [
+                        ListTile(
+                          title: Text('Address: ${bookingData['address'] ?? 'N/A'}'),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Item ID: ${bookingData['item_id'] ?? 'N/A'}'),
+                              Text('Quantity: ${bookingData['quantity'] ?? 0}'),
+                              Text('Amount: ₹${bookingData['total_amount'] ?? 0}'),
+                              Text(
+                                'Date: ${bookingData['purchase_date'] != null ? (bookingData['purchase_date'] as Timestamp).toDate().toString().split(' ')[0] : 'N/A'}',
+                              ),
+                              Text('Payment ID: ${bookingData['payment_id'] ?? 'N/A'}'),
+                              Text('Status: ${bookingData['status'] ?? 'Order Placed'}'),
+                              if (bookingData.containsKey('tracking_id') &&
+                                  bookingData['tracking_id'] != null &&
+                                  bookingData['tracking_id'].toString().isNotEmpty)
+                                Text('Tracking ID: ${bookingData['tracking_id']}'),
+                            ],
+                          ),
+                        ),
+                      ],
+                      trailing: IconButton(
+                        icon: const Icon(Icons.edit),
+                        onPressed: () => _showTrackingDialog(booking),
                       ),
                     ),
                   );
@@ -387,13 +765,6 @@ class _StoreManagementPageState extends State<StoreManagementPage> {
             },
           ),
         ),
-        if (_isUploading)
-          Container(
-            color: Colors.black54,
-            child: const Center(
-              child: CircularProgressIndicator(),
-            ),
-          ),
       ],
     );
   }

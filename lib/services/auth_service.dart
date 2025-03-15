@@ -8,6 +8,7 @@ class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
+  // Login method (unchanged)
   Future<void> login(
       String email, String password, BuildContext context) async {
     try {
@@ -18,20 +19,32 @@ class AuthService {
 
       User? user = userCredential.user;
       if (user != null) {
-        // Check if the user's email is verified
         if (!user.emailVerified) {
-          // Show a popup to inform the user to verify their email
           _showVerificationPopup(user, context);
-          return; // Prevent further actions if the user is not verified
+          return;
         }
-
-        // If the user is verified, check their role and navigate accordingly
         await _checkUserRole(user.uid, context);
       }
     } on FirebaseAuthException catch (e) {
-      throw e; // ✅ Now it throws the actual FirebaseAuthException
+      throw e;
     } catch (e) {
       throw Exception("An unexpected error occurred. Please try again.");
+    }
+  }
+
+  // New SignUp method
+  Future<UserCredential?> signUp(String email, String password) async {
+    try {
+      UserCredential userCredential =
+          await _auth.createUserWithEmailAndPassword(
+        email: email.trim(),
+        password: password.trim(),
+      );
+      return userCredential;
+    } on FirebaseAuthException catch (e) {
+      throw e; // Let the caller handle specific Firebase errors
+    } catch (e) {
+      throw Exception("An unexpected error occurred during registration.");
     }
   }
 

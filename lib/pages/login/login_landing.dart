@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:temple_app/pages/Dashboards/dashboard_users.dart';
 import 'dart:ui';
-import 'package:shared_preferences/shared_preferences.dart'; // Add this import
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:temple_app/pages/Login/login_page.dart';
+import 'package:temple_app/pages/Login/register_page.dart';
 
 class LoginLanding extends StatelessWidget {
   // Add this method to handle guest login
@@ -26,6 +27,14 @@ class LoginLanding extends StatelessWidget {
       // Handle any errors that might occur
       print('Error in guest login: $e');
     }
+  }
+
+  // Fix the navigation method by adding context as a parameter
+  void _navigateToRegister(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const RegistrationPage()),
+    );
   }
 
   @override
@@ -92,7 +101,7 @@ class LoginLanding extends StatelessWidget {
                   SizedBox(height: 25),
                   TextButton(
                     onPressed: () =>
-                        _handleGuestLogin(context), // Update this line
+                        _handleGuestLogin(context), // Guest login handler
                     child: Text(
                       'Continue as Guest',
                       style: TextStyle(
@@ -101,6 +110,16 @@ class LoginLanding extends StatelessWidget {
                     ),
                   ),
                   SizedBox(height: 20),
+                  TextButton(
+                    onPressed: () => _navigateToRegister(
+                        context), // Fix: Navigate to Register
+                    child: Text(
+                      'New User?  Register Here',
+                      style: TextStyle(
+                          fontSize: 16,
+                          color: const Color.fromARGB(255, 255, 205, 26)),
+                    ),
+                  ),
                   Text(
                     'Sree Manapulli Bhagavathy Devaswom, East Yakkara, Manapullikavu, Palakkad - 678701',
                     textAlign: TextAlign.center,

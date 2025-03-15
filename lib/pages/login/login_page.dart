@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:temple_app/pages/Login/forgot_password.dart';
 import 'package:temple_app/pages/Login/login_landing.dart';
+import 'package:temple_app/pages/Login/register_page.dart';
 import 'package:temple_app/services/auth_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -21,6 +22,7 @@ class _LoginPageState extends State<LoginPage> {
   final TextEditingController _passwordController = TextEditingController();
   final AuthService _authService = AuthService();
   bool _isLoading = false;
+  DateTime? _lastVerificationEmailSent; // Track the last time an email was sent
 
   // Method to set user preferences including isGuest
   Future<void> _setUserPreferences(
@@ -97,7 +99,6 @@ class _LoginPageState extends State<LoginPage> {
                 "Updated Firestore 'verified' field to true for UID: ${user.uid}");
           }
 
-          // Set user preferences including isGuest
           await _setUserPreferences(user, userData);
 
           if (user.emailVerified) {
@@ -123,7 +124,6 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
-  // Helper method to handle logout and reset preferences
   static Future<void> logout() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     await prefs.setBool('isLoggedIn', false);
@@ -144,17 +144,19 @@ class _LoginPageState extends State<LoginPage> {
   void _showVerificationPopup(User user) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: const Text("Account Not Verified"),
         content: const Text(
             "Your account is not verified. Please verify your email to continue."),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(dialogContext),
             child: const Text("Close"),
           ),
           TextButton(
-            onPressed: () => _resendVerificationEmail(user),
+            onPressed: () async {
+              await _resendVerificationEmail(user, dialogContext);
+            },
             child: const Text("Resend Verification Email"),
           ),
         ],
@@ -162,13 +164,60 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  Future<void> _resendVerificationEmail(User user) async {
+  Future<void> _resendVerificationEmail(
+      User user, BuildContext dialogContext) async {
     try {
+      // Check if the user is still signed in
+      if (FirebaseAuth.instance.currentUser == null) {
+        _showToast("User session expired. Please log in again.", Colors.red);
+        Navigator.pop(dialogContext); // Close the dialog
+        return;
+      }
+
+      // Check for cooldown period (e.g., 1 minute between requests)
+      if (_lastVerificationEmailSent != null) {
+        final timeSinceLastSent =
+            DateTime.now().difference(_lastVerificationEmailSent!);
+        if (timeSinceLastSent.inSeconds < 60) {
+          _showToast(
+              "Please wait ${60 - timeSinceLastSent.inSeconds} seconds before resending.",
+              Colors.red);
+          Navigator.pop(dialogContext); // Close the dialog even on cooldown
+          return;
+        }
+      }
+
+      // Refresh the user to ensure the latest state
+      await user.reload();
+      user = FirebaseAuth.instance.currentUser!;
+
+      // Send the verification email
       await user.sendEmailVerification();
+      _lastVerificationEmailSent = DateTime.now(); // Update the last sent time
       _showToast("Verification email sent!", Colors.green);
+      Navigator.pop(dialogContext); // Close the dialog after success
     } catch (e) {
-      _showToast("Failed to resend verification email", Colors.red);
-      developer.log("Error resending verification email: $e");
+      // Provide more specific error messages based on the exception
+      String errorMessage;
+      if (e is FirebaseAuthException) {
+        switch (e.code) {
+          case 'too-many-requests':
+            errorMessage =
+                "Too many requests. Please wait a few minutes before trying again.";
+            break;
+          case 'network-request-failed':
+            errorMessage = "Network error. Please check your connection.";
+            break;
+          default:
+            errorMessage = "Failed to resend verification email: ${e.message}";
+        }
+      } else {
+        errorMessage = "Failed to resend verification email: $e";
+      }
+      _showToast(errorMessage, Colors.red);
+      developer.log("Error resending verification email: $e",
+          stackTrace: StackTrace.current);
+      Navigator.pop(dialogContext); // Close the dialog after error
     }
   }
 
@@ -202,7 +251,7 @@ class _LoginPageState extends State<LoginPage> {
   void _showToast(String message, Color color) {
     Fluttertoast.showToast(
       msg: message,
-      toastLength: Toast.LENGTH_SHORT,
+      toastLength: Toast.LENGTH_LONG, // Increase duration for better visibility
       gravity: ToastGravity.BOTTOM,
       backgroundColor: color,
       textColor: Colors.white,
@@ -227,16 +276,19 @@ class _LoginPageState extends State<LoginPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      resizeToAvoidBottomInset: false,
+      resizeToAvoidBottomInset:
+          true, // Enable resizing to avoid keyboard overlap
       body: Stack(
+        fit: StackFit.expand, // Ensure the stack fills the entire screen
         children: [
-          Positioned.fill(
-            child: Image.asset(
-              'assets/images/mpkv.png',
-              fit: BoxFit.cover,
+          // Background Image
+          Container(
+            decoration: const BoxDecoration(
+              image: DecorationImage(
+                image: AssetImage('assets/images/mpkv.png'),
+                fit: BoxFit.cover, // Ensure the image covers the entire screen
+              ),
             ),
-          ),
-          Positioned.fill(
             child: BackdropFilter(
               filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
               child: Container(
@@ -244,104 +296,103 @@ class _LoginPageState extends State<LoginPage> {
               ),
             ),
           ),
+          // Content
           SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Align(
-                alignment: Alignment.topLeft,
-                child: IconButton(
-                  icon: const Icon(Icons.arrow_back, color: Colors.white),
-                  onPressed: _navigateToLoginLanding,
+            child: SingleChildScrollView(
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Align(
+                      alignment: Alignment.topLeft,
+                      child: IconButton(
+                        icon: const Icon(Icons.arrow_back, color: Colors.white),
+                        onPressed: _navigateToLoginLanding,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    const CircleAvatar(
+                      radius: 50,
+                      backgroundImage: AssetImage('assets/images/mpk.png'),
+                    ),
+                    const SizedBox(height: 20),
+                    const Text(
+                      "Welcome Back!",
+                      style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white),
+                    ),
+                    const SizedBox(height: 20),
+                    Padding(
+                      padding: const EdgeInsets.all(10.0),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: TextField(
+                          controller: _emailController,
+                          keyboardType: TextInputType.emailAddress,
+                          style: const TextStyle(color: Colors.black),
+                          decoration: const InputDecoration(
+                            labelText: "Email",
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.email),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Padding(
+                      padding: const EdgeInsets.all(10.0),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: TextField(
+                          controller: _passwordController,
+                          obscureText: true,
+                          style: const TextStyle(color: Colors.black),
+                          decoration: const InputDecoration(
+                            labelText: "Password",
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.lock),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton(
+                        onPressed: _navigateToResetPassword,
+                        child: const Text(
+                          "Forgot Password?",
+                          style: TextStyle(color: Colors.white, fontSize: 14),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    ElevatedButton(
+                      onPressed: _isLoading ? null : _login,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.red,
+                        minimumSize: const Size(double.infinity, 50),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      child: _isLoading
+                          ? const CircularProgressIndicator(color: Colors.white)
+                          : const Text("Login",
+                              style:
+                                  TextStyle(color: Colors.white, fontSize: 16)),
+                    ),
+                  ],
                 ),
-              ),
-            ),
-          ),
-          Center(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const CircleAvatar(
-                    radius: 50,
-                    backgroundImage: AssetImage('assets/images/mpk.png'),
-                  ),
-                  const SizedBox(height: 20),
-                  const Text(
-                    "Welcome Back!",
-                    style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white),
-                  ),
-                  const SizedBox(height: 20),
-                  Padding(
-                    padding: const EdgeInsets.all(10.0),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: TextField(
-                        controller: _emailController,
-                        keyboardType: TextInputType.emailAddress,
-                        style: const TextStyle(color: Colors.black),
-                        decoration: const InputDecoration(
-                          labelText: "Email",
-                          border: OutlineInputBorder(),
-                          prefixIcon: Icon(Icons.email),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Padding(
-                    padding: const EdgeInsets.all(10.0),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: TextField(
-                        controller: _passwordController,
-                        obscureText: true,
-                        style: const TextStyle(color: Colors.black),
-                        decoration: const InputDecoration(
-                          labelText: "Password",
-                          border: OutlineInputBorder(),
-                          prefixIcon: Icon(Icons.lock),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: TextButton(
-                      onPressed: _navigateToResetPassword,
-                      child: const Text(
-                        "Forgot Password?",
-                        style: TextStyle(color: Colors.white, fontSize: 14),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  ElevatedButton(
-                    onPressed: _isLoading ? null : _login,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red,
-                      minimumSize: const Size(double.infinity, 50),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                    child: _isLoading
-                        ? const CircularProgressIndicator(color: Colors.white)
-                        : const Text("Login",
-                            style:
-                                TextStyle(color: Colors.white, fontSize: 16)),
-                  ),
-                ],
               ),
             ),
           ),
